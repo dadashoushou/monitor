@@ -188,12 +188,17 @@ async function showHistory(siteId, siteName) {
     return;
   }
   list.innerHTML = results.map(r => `
-    <li onclick="showArticles('${siteId}', '${r.filename}', this)">
+    <li data-site-id="${esc(siteId)}" data-filename="${esc(r.filename)}" class="history-item">
       <span style="color:#999">${r.crawled_at.replace('T',' ')}</span>
       <span>${r.count} 条</span>
       <span class="badge badge-${r.method === 'rss' ? 'rss' : 'no_rss'}">${r.method.toUpperCase()}</span>
     </li>
   `).join('');
+  document.querySelectorAll('#historyList .history-item').forEach(li => {
+    li.addEventListener('click', function() {
+      showArticles(this.dataset.siteId, this.dataset.filename, this);
+    });
+  });
 }
 
 async function showArticles(siteId, filename, liEl) {
@@ -254,7 +259,7 @@ function renderTable(sites) {
       <td>${esc(s.name)}</td>
       <td class="url-cell"><a href="${esc(s.url)}" target="_blank">${esc(s.url)}</a></td>
       <td class="url-cell">${s.rss_url ? `<a href="${esc(s.rss_url)}" target="_blank">${esc(s.rss_url)}</a>` : '<span style="color:#ccc">—</span>'}</td>
-      <td><span class="badge badge-${s.status}">${STATUS_LABEL[s.status] || s.status}</span></td>
+      <td><span class="badge badge-${esc(s.status)}">${STATUS_LABEL[s.status] || esc(s.status)}</span></td>
       <td style="color:#999;font-size:12px">${s.last_checked ? s.last_checked.replace('T', ' ') : '—'}</td>
       <td style="color:#999;font-size:12px">${s.crawl_count != null ? s.crawl_count : '—'}</td>
       <td style="color:#999;font-size:12px">${s.last_crawled ? s.last_crawled.replace('T', ' ') : '—'}</td>
