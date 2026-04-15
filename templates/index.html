@@ -63,6 +63,10 @@
   .article-list { padding: 8px 14px 14px; background: #fafafa; }
   .article-list a { display: block; font-size: 12px; color: #2563eb; text-decoration: none; padding: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .article-list a:hover { text-decoration: underline; }
+  .data-dir-input { padding: 6px 10px; border-radius: 6px; border: 1px solid #d4d4d4; font-size: 13px; width: 260px; outline: none; }
+  .data-dir-input:focus { border-color: #1a1a1a; }
+  .data-dir-input.saved { border-color: #16a34a; }
+  .data-dir-input.error { border-color: #ef4444; }
 </style>
 </head>
 <body>
@@ -78,6 +82,8 @@
     <option value="12">每12小时</option>
     <option value="24">每24小时</option>
   </select>
+  <input id="dataDirInput" class="data-dir-input" type="text" placeholder="数据目录（绝对路径，空=默认）" title="抓取结果 JSON 文件保存目录">
+  <button class="btn btn-secondary" id="btnSaveDataDir">保存路径</button>
   <button class="btn btn-primary" onclick="openModal()">+ 添加网站</button>
 </div>
 
@@ -230,6 +236,7 @@ async function initIntervalSelect() {
       body: JSON.stringify({ crawl_interval_hours: parseInt(sel.value) })
     });
   });
+  document.getElementById('dataDirInput').value = cfg.data_dir || '';
 }
 
 const STATUS_LABEL = {
@@ -375,6 +382,31 @@ function startPolling() {
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && document.getElementById('overlay').classList.contains('open')) saveSite();
   if (e.key === 'Escape') closeModal();
+});
+
+let _dataDirTimer = null;
+document.getElementById('btnSaveDataDir').addEventListener('click', async () => {
+  const input = document.getElementById('dataDirInput');
+  const btn = document.getElementById('btnSaveDataDir');
+  clearTimeout(_dataDirTimer);
+  btn.disabled = true;
+  btn.textContent = '保存路径';
+  input.classList.remove('saved', 'error');
+  const res = await fetch('/api/config', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ data_dir: input.value.trim() })
+  });
+  btn.disabled = false;
+  if (res.ok) {
+    input.classList.add('saved');
+    btn.textContent = '已保存 ✓';
+    _dataDirTimer = setTimeout(() => { input.classList.remove('saved'); btn.textContent = '保存路径'; }, 2000);
+  } else {
+    input.classList.add('error');
+    btn.textContent = '路径无效';
+    _dataDirTimer = setTimeout(() => { input.classList.remove('error'); btn.textContent = '保存路径'; }, 2000);
+  }
 });
 
 document.getElementById('btnCrawlAll').addEventListener('click', async () => {
