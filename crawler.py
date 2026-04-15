@@ -101,7 +101,8 @@ def crawl_site(site: dict) -> dict | None:
     DATA_DIR.mkdir(exist_ok=True)
     crawled_at = datetime.now().isoformat(timespec='seconds')
     ts = crawled_at.replace(':', '-').replace('T', '_')
-    filename = f"{ts}_{site['id']}.json"
+    safe_id = re.sub(r'[^\w\-]', '_', site['id'])
+    filename = f"{ts}_{safe_id}.json"
 
     result = {
         'site_id': site['id'],
@@ -125,7 +126,10 @@ def crawl_all(sites: list[dict]) -> list[dict]:
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(crawl_site, site): site for site in sites}
         for future in as_completed(futures):
-            result = future.result()
-            if result is not None:
-                results.append(result)
+            try:
+                result = future.result()
+                if result is not None:
+                    results.append(result)
+            except Exception:
+                pass
     return results

@@ -1,1 +1,20 @@
-[]
+[
+  {
+    "id": "b7b471fd-8f57-4260-97fd-e6a7c31f09d6",
+    "name": "防1",
+    "url": "defenseone.com",
+    "note": "",
+    "rss_url": null,
+    "status": "no_rss",
+    "last_checked": "2026-04-15T17:32:25"
+  },
+  {
+    "id": "813db237-a6e7-4e76-a9d5-528d5d72a792",
+    "name": "电子空间",
+    "url": "electronicspecifier.com",
+    "note": "",
+    "rss_url": null,
+    "status": "no_rss",
+    "last_checked": "2026-04-15T17:32:25"
+  }
+]
