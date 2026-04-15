@@ -51,6 +51,18 @@
   .field textarea { resize: vertical; min-height: 60px; }
   .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
   .empty { text-align: center; padding: 48px; color: #999; font-size: 13px; }
+  /* 抓取相关 */
+  .badge-crawling { background: #dbeafe; color: #2563eb; }
+  select.interval-select { padding: 6px 10px; border-radius: 6px; border: 1px solid #d4d4d4; font-size: 13px; cursor: pointer; }
+  .history-panel { margin-top: 16px; }
+  .history-panel h3 { font-size: 13px; font-weight: 600; margin-bottom: 10px; color: #555; }
+  .history-list { list-style: none; }
+  .history-list li { padding: 8px 14px; border-bottom: 1px solid #f0f0f0; font-size: 12px; cursor: pointer; display: flex; gap: 12px; align-items: center; }
+  .history-list li:hover { background: #fafafa; }
+  .history-list li:last-child { border-bottom: none; }
+  .article-list { padding: 8px 14px 14px; background: #fafafa; }
+  .article-list a { display: block; font-size: 12px; color: #2563eb; text-decoration: none; padding: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .article-list a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -59,6 +71,13 @@
   <h1>OpenMonitor</h1>
   <span id="siteCount" style="font-size:12px;color:#999;"></span>
   <button class="btn btn-secondary" id="btnCheckAll">全部检测</button>
+  <button class="btn btn-secondary" id="btnCrawlAll">全部抓取</button>
+  <select class="interval-select" id="intervalSelect" title="定时抓取间隔">
+    <option value="1">每1小时</option>
+    <option value="6" selected>每6小时</option>
+    <option value="12">每12小时</option>
+    <option value="24">每24小时</option>
+  </select>
   <button class="btn btn-primary" onclick="openModal()">+ 添加网站</button>
 </div>
 
@@ -74,12 +93,24 @@
           <th>RSS 地址</th>
           <th>状态</th>
           <th>最后检测</th>
+          <th>最近条目数</th>
+          <th>上次抓取</th>
           <th>操作</th>
         </tr>
       </thead>
       <tbody id="tbody"></tbody>
     </table>
   </div>
+</div>
+
+<!-- 历史面板 -->
+<div class="card history-panel" id="historyPanel" style="display:none">
+  <div style="padding:14px 14px 0;display:flex;justify-content:space-between;align-items:center">
+    <h3 id="historyTitle">抓取历史</h3>
+    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('historyPanel').style.display='none'">关闭</button>
+  </div>
+  <ul class="history-list" id="historyList"></ul>
+  <div class="article-list" id="articleList" style="display:none"></div>
 </div>
 
 <!-- 添加/编辑弹窗 -->
@@ -99,6 +130,102 @@
 <script>
 let editingId = null;
 let pollTimer = null;
+let crawlPollTimer = null;
+
+async function loadSitesWithCrawlInfo() {
+  const res = await fetch('/api/sites');
+  const sites = await res.json();
+  await Promise.all(sites.map(async s => {
+    try {
+      const r = await fetch('/api/results/' + s.id);
+      const results = await r.json();
+      if (results.length > 0) {
+        s.crawl_count = results[0].count;
+        s.last_crawled = results[0].crawled_at;
+      }
+    } catch(e) {}
+  }));
+  renderTable(sites);
+  document.getElementById('siteCount').textContent = sites.length + ' 个网站';
+}
+
+async function crawlOne(id) {
+  const row = document.getElementById('row-' + id);
+  const btn = Array.from(row.querySelectorAll('button')).find(b => b.textContent === '抓取');
+  if (btn) { btn.disabled = true; btn.textContent = '抓取中…'; }
+  await fetch('/api/crawl/' + id, { method: 'POST' });
+  if (btn) { btn.disabled = false; btn.textContent = '抓取'; }
+  loadSitesWithCrawlInfo();
+}
+
+function startCrawlPolling() {
+  if (crawlPollTimer) return;
+  crawlPollTimer = setInterval(async () => {
+    const res = await fetch('/api/crawl/status');
+    const s = await res.json();
+    if (!s.running) {
+      clearInterval(crawlPollTimer);
+      crawlPollTimer = null;
+      const btn = document.getElementById('btnCrawlAll');
+      btn.disabled = false;
+      btn.textContent = '全部抓取';
+      loadSitesWithCrawlInfo();
+    }
+  }, 1500);
+}
+
+async function showHistory(siteId, siteName) {
+  document.getElementById('historyTitle').textContent = siteName + ' — 抓取历史';
+  document.getElementById('articleList').style.display = 'none';
+  document.getElementById('articleList').innerHTML = '';
+  const panel = document.getElementById('historyPanel');
+  panel.style.display = 'block';
+  const res = await fetch('/api/results/' + siteId);
+  const results = await res.json();
+  const list = document.getElementById('historyList');
+  if (results.length === 0) {
+    list.innerHTML = '<li style="color:#999">暂无抓取记录</li>';
+    return;
+  }
+  list.innerHTML = results.map(r => `
+    <li onclick="showArticles('${siteId}', '${r.filename}', this)">
+      <span style="color:#999">${r.crawled_at.replace('T',' ')}</span>
+      <span>${r.count} 条</span>
+      <span class="badge badge-${r.method === 'rss' ? 'rss' : 'no_rss'}">${r.method.toUpperCase()}</span>
+    </li>
+  `).join('');
+}
+
+async function showArticles(siteId, filename, liEl) {
+  const articleDiv = document.getElementById('articleList');
+  if (liEl.classList.contains('active')) {
+    liEl.classList.remove('active');
+    articleDiv.style.display = 'none';
+    return;
+  }
+  document.querySelectorAll('#historyList li').forEach(l => l.classList.remove('active'));
+  liEl.classList.add('active');
+  const res = await fetch('/api/results/' + siteId + '/' + filename);
+  const data = await res.json();
+  articleDiv.style.display = 'block';
+  articleDiv.innerHTML = (data.items || []).map(item =>
+    `<a href="${esc(item.url)}" target="_blank">${esc(item.title)}</a>`
+  ).join('');
+}
+
+async function initIntervalSelect() {
+  const res = await fetch('/api/config');
+  const cfg = await res.json();
+  const sel = document.getElementById('intervalSelect');
+  sel.value = String(cfg.crawl_interval_hours || 6);
+  sel.addEventListener('change', async () => {
+    await fetch('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ crawl_interval_hours: parseInt(sel.value) })
+    });
+  });
+}
 
 const STATUS_LABEL = {
   rss: 'RSS',
@@ -129,8 +256,12 @@ function renderTable(sites) {
       <td class="url-cell">${s.rss_url ? `<a href="${esc(s.rss_url)}" target="_blank">${esc(s.rss_url)}</a>` : '<span style="color:#ccc">—</span>'}</td>
       <td><span class="badge badge-${s.status}">${STATUS_LABEL[s.status] || s.status}</span></td>
       <td style="color:#999;font-size:12px">${s.last_checked ? s.last_checked.replace('T', ' ') : '—'}</td>
+      <td style="color:#999;font-size:12px">${s.crawl_count != null ? s.crawl_count : '—'}</td>
+      <td style="color:#999;font-size:12px">${s.last_crawled ? s.last_crawled.replace('T', ' ') : '—'}</td>
       <td class="actions">
         <button class="btn btn-secondary btn-sm" onclick="checkOne('${s.id}')">检测</button>
+        <button class="btn btn-secondary btn-sm" onclick="crawlOne('${s.id}')">抓取</button>
+        <button class="btn btn-secondary btn-sm" onclick="showHistory('${s.id}', '${esc(s.name)}')">历史</button>
         <button class="btn btn-secondary btn-sm" onclick="openModal('${s.id}')">编辑</button>
         <button class="btn btn-danger btn-sm" onclick="deleteSite('${s.id}')">删除</button>
       </td>
@@ -241,7 +372,16 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeModal();
 });
 
-loadSites();
+document.getElementById('btnCrawlAll').addEventListener('click', async () => {
+  const btn = document.getElementById('btnCrawlAll');
+  btn.disabled = true;
+  btn.textContent = '抓取中…';
+  await fetch('/api/crawl', { method: 'POST' });
+  startCrawlPolling();
+});
+
+loadSitesWithCrawlInfo();
+initIntervalSelect();
 </script>
 </body>
 </html>
