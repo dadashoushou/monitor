@@ -12,7 +12,6 @@ import feedparser
 import requests
 from bs4 import BeautifulSoup
 
-DATA_DIR = Path(__file__).parent / 'data'
 HEADERS = {'User-Agent': 'Mozilla/5.0 (compatible; openmonitor-crawler/1.0)'}
 DATE_PATTERN = re.compile(r'\d{4}[-/_]\d{2}')
 
@@ -86,7 +85,7 @@ def crawl_html(site: dict) -> list[dict]:
     return items
 
 
-def crawl_site(site: dict) -> dict | None:
+def crawl_site(site: dict, data_dir: Path) -> dict | None:
     """抓取单个网站，有结果则写文件并返回 dict，否则返回 None"""
     if site.get('status') == 'rss':
         items = crawl_rss(site)
@@ -98,7 +97,7 @@ def crawl_site(site: dict) -> dict | None:
     if not items:
         return None
 
-    DATA_DIR.mkdir(exist_ok=True)
+    data_dir.mkdir(parents=True, exist_ok=True)
     crawled_at = datetime.now().isoformat(timespec='seconds')
     ts = crawled_at.replace(':', '-').replace('T', '_')
     safe_id = re.sub(r'[^\w\-]', '_', site['id'])
@@ -114,17 +113,17 @@ def crawl_site(site: dict) -> dict | None:
         'items': items,
     }
 
-    with open(DATA_DIR / filename, 'w', encoding='utf-8') as f:
+    with open(data_dir / filename, 'w', encoding='utf-8') as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
 
     return result
 
 
-def crawl_all(sites: list[dict]) -> list[dict]:
+def crawl_all(sites: list[dict], data_dir: Path) -> list[dict]:
     """并发抓取所有网站，返回有结果的列表"""
     results = []
     with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = {executor.submit(crawl_site, site): site for site in sites}
+        futures = {executor.submit(crawl_site, site, data_dir): site for site in sites}
         for future in as_completed(futures):
             try:
                 result = future.result()
