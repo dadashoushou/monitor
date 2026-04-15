@@ -122,6 +122,12 @@ def get_sites():
     return jsonify(load_sites())
 
 
+def _normalize_url(url: str) -> str:
+    if url and not url.startswith(('http://', 'https://')):
+        return 'https://' + url
+    return url
+
+
 @app.route('/api/sites', methods=['POST'])
 def add_site():
     data = request.get_json()
@@ -131,7 +137,7 @@ def add_site():
     site = {
         'id': str(uuid.uuid4()),
         'name': data['name'].strip(),
-        'url': data['url'].strip(),
+        'url': _normalize_url(data['url'].strip()),
         'note': data.get('note', '').strip(),
         'rss_url': None,
         'status': 'pending',
@@ -151,7 +157,7 @@ def update_site(site_id):
             if data.get('name'):
                 site['name'] = data['name'].strip()
             if data.get('url'):
-                site['url'] = data['url'].strip()
+                site['url'] = _normalize_url(data['url'].strip())
             site['note'] = data.get('note', site.get('note', '')).strip()
             save_sites(sites)
             return jsonify(site)
