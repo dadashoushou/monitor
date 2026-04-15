@@ -14,10 +14,71 @@ import re
 import requests
 import feedparser
 from urllib.parse import urljoin
+from apscheduler.schedulers.background import BackgroundScheduler
+from crawler import crawl_site as _crawl_site, crawl_all as _crawl_all
 
 app = Flask(__name__)
 
 DATA_FILE = Path(__file__).parent / 'sites.json'
+CONFIG_FILE = Path(__file__).parent / 'config.json'
+DATA_DIR = Path(__file__).parent / 'data'
+
+# 抓取状态
+crawl_state = {
+    'running': False,
+    'total': 0,
+    'done': 0,
+    'current': '',
+    'last_run': None,
+}
+crawl_lock = threading.Lock()
+
+
+def load_config() -> dict:
+    if not CONFIG_FILE.exists():
+        return {'crawl_interval_hours': 6}
+    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+
+def save_config(cfg: dict):
+    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+        json.dump(cfg, f, ensure_ascii=False, indent=2)
+
+
+def run_crawl_all():
+    global crawl_state
+    sites = load_sites()
+    with crawl_lock:
+        if crawl_state['running']:
+            return
+        crawl_state = {
+            'running': True,
+            'total': len(sites),
+            'done': 0,
+            'current': '',
+            'last_run': crawl_state.get('last_run'),
+        }
+    for i, site in enumerate(sites):
+        with crawl_lock:
+            crawl_state['current'] = site['name']
+        _crawl_site(site)
+        with crawl_lock:
+            crawl_state['done'] = i + 1
+    with crawl_lock:
+        crawl_state['running'] = False
+        crawl_state['last_run'] = datetime.now().isoformat(timespec='seconds')
+
+
+scheduler = BackgroundScheduler()
+
+
+def _start_scheduler():
+    cfg = load_config()
+    hours = cfg.get('crawl_interval_hours', 6)
+    scheduler.add_job(run_crawl_all, 'interval', hours=hours, id='crawl_job')
+    scheduler.start()
+
 
 # 全局检测状态
 check_state = {
@@ -206,5 +267,82 @@ def check_one_route(site_id):
     return jsonify({'error': '未找到'}), 404
 
 
+@app.route('/api/crawl', methods=['POST'])
+def crawl_all_route():
+    with crawl_lock:
+        if crawl_state['running']:
+            return jsonify({'error': '抓取正在进行中'}), 409
+    t = threading.Thread(target=run_crawl_all, daemon=True)
+    t.start()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/crawl/<site_id>', methods=['POST'])
+def crawl_one_route(site_id):
+    sites = load_sites()
+    site = next((s for s in sites if s['id'] == site_id), None)
+    if not site:
+        return jsonify({'error': '未找到'}), 404
+    result = _crawl_site(site)
+    return jsonify(result if result else {'count': 0})
+
+
+@app.route('/api/crawl/status', methods=['GET'])
+def crawl_status():
+    with crawl_lock:
+        return jsonify(dict(crawl_state))
+
+
+@app.route('/api/config', methods=['GET'])
+def get_config():
+    return jsonify(load_config())
+
+
+@app.route('/api/config', methods=['POST'])
+def update_config():
+    data = request.get_json()
+    cfg = load_config()
+    if 'crawl_interval_hours' in data:
+        hours = int(data['crawl_interval_hours'])
+        cfg['crawl_interval_hours'] = hours
+        save_config(cfg)
+        if scheduler.get_job('crawl_job'):
+            scheduler.reschedule_job('crawl_job', trigger='interval', hours=hours)
+    return jsonify(cfg)
+
+
+@app.route('/api/results/<site_id>', methods=['GET'])
+def get_results(site_id):
+    if not DATA_DIR.exists():
+        return jsonify([])
+    files = sorted(DATA_DIR.glob(f'*_{site_id}.json'), reverse=True)
+    result = []
+    for f in files:
+        try:
+            with open(f, 'r', encoding='utf-8') as fp:
+                data = json.load(fp)
+            result.append({
+                'filename': f.name,
+                'crawled_at': data.get('crawled_at', ''),
+                'count': data.get('count', 0),
+                'method': data.get('method', ''),
+            })
+        except Exception:
+            pass
+    return jsonify(result)
+
+
+@app.route('/api/results/<site_id>/<filename>', methods=['GET'])
+def get_result_file(site_id, filename):
+    if not re.match(r'^[\w\-\.]+$', filename):
+        return jsonify({'error': '非法文件名'}), 400
+    filepath = DATA_DIR / filename
+    if not filepath.exists():
+        return jsonify({'error': '未找到'}), 404
+    with open(filepath, 'r', encoding='utf-8') as f:
+        return jsonify(json.load(f))
+
+
 if __name__ == '__main__':
+    _start_scheduler()
     app.run(debug=True, port=5000)
