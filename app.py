@@ -272,9 +272,16 @@ def crawl_all_route():
     with crawl_lock:
         if crawl_state['running']:
             return jsonify({'error': '抓取正在进行中'}), 409
+        crawl_state['running'] = True
     t = threading.Thread(target=run_crawl_all, daemon=True)
     t.start()
     return jsonify({'ok': True})
+
+
+@app.route('/api/crawl/status', methods=['GET'])
+def crawl_status():
+    with crawl_lock:
+        return jsonify(dict(crawl_state))
 
 
 @app.route('/api/crawl/<site_id>', methods=['POST'])
@@ -285,12 +292,6 @@ def crawl_one_route(site_id):
         return jsonify({'error': '未找到'}), 404
     result = _crawl_site(site)
     return jsonify(result if result else {'count': 0})
-
-
-@app.route('/api/crawl/status', methods=['GET'])
-def crawl_status():
-    with crawl_lock:
-        return jsonify(dict(crawl_state))
 
 
 @app.route('/api/config', methods=['GET'])
@@ -344,5 +345,7 @@ def get_result_file(site_id, filename):
 
 
 if __name__ == '__main__':
-    _start_scheduler()
+    import os
+    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not app.debug:
+        _start_scheduler()
     app.run(debug=True, port=5000)
