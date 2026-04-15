@@ -58,6 +58,7 @@ def get_data_dir() -> Path:
 def run_crawl_all():
     global crawl_state
     sites = load_sites()
+    data_dir = get_data_dir()
     with crawl_lock:
         if crawl_state['running']:
             return
@@ -71,7 +72,7 @@ def run_crawl_all():
     for i, site in enumerate(sites):
         with crawl_lock:
             crawl_state['current'] = site['name']
-        _crawl_site(site, get_data_dir())
+        _crawl_site(site, data_dir)
         with crawl_lock:
             crawl_state['done'] = i + 1
     with crawl_lock:
