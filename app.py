@@ -195,13 +195,15 @@ def _is_valid_feed(url, timeout=5):
 
 def _detect_rss(root_url, timeout=5):
     """返回 (rss_url_or_None, status_string)"""
+    html = None
     try:
         r = requests.get(root_url, headers=HEADERS, timeout=timeout)
+        html = r.text
         for pattern in [
             r'<link[^>]+(?:application/rss\+xml|application/atom\+xml)[^>]+href=["\']([^"\']+)["\']',
             r'<link[^>]+href=["\']([^"\']+)["\'][^>]+(?:application/rss\+xml|application/atom\+xml)',
         ]:
-            matches = re.findall(pattern, r.text, re.IGNORECASE)
+            matches = re.findall(pattern, html, re.IGNORECASE)
             if matches:
                 feed_url = matches[0]
                 if not feed_url.startswith('http'):
@@ -215,6 +217,16 @@ def _detect_rss(root_url, timeout=5):
         candidate = urljoin(root_url, path)
         if _is_valid_feed(candidate, timeout):
             return candidate, 'rss'
+
+    # 扫描页面 <a href> 中含 rss/feed/atom 关键词的链接
+    if html:
+        try:
+            for href in re.findall(r'<a[^>]+href=["\']([^"\']*(?:rss|feed|atom)[^"\']*)["\']', html, re.IGNORECASE):
+                candidate = href if href.startswith('http') else urljoin(root_url, href)
+                if _is_valid_feed(candidate, timeout):
+                    return candidate, 'rss'
+        except Exception:
+            pass
 
     return None, 'no_rss'
 
