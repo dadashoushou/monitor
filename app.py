@@ -21,7 +21,6 @@ app = Flask(__name__)
 
 DATA_FILE = Path(__file__).parent / 'sites.json'
 CONFIG_FILE = Path(__file__).parent / 'config.json'
-DATA_DIR = Path(__file__).parent / 'data'
 
 # 抓取状态
 crawl_state = {
@@ -46,6 +45,16 @@ def save_config(cfg: dict):
         json.dump(cfg, f, ensure_ascii=False, indent=2)
 
 
+_DEFAULT_DATA_DIR = Path(__file__).parent / 'data'
+
+
+def get_data_dir() -> Path:
+    """从 config 读取 data_dir，空则返回默认路径"""
+    cfg = load_config()
+    raw = cfg.get('data_dir', '').strip()
+    return Path(raw) if raw else _DEFAULT_DATA_DIR
+
+
 def run_crawl_all():
     global crawl_state
     sites = load_sites()
@@ -62,7 +71,7 @@ def run_crawl_all():
     for i, site in enumerate(sites):
         with crawl_lock:
             crawl_state['current'] = site['name']
-        _crawl_site(site)
+        _crawl_site(site, get_data_dir())
         with crawl_lock:
             crawl_state['done'] = i + 1
     with crawl_lock:
@@ -290,7 +299,7 @@ def crawl_one_route(site_id):
     site = next((s for s in sites if s['id'] == site_id), None)
     if not site:
         return jsonify({'error': '未找到'}), 404
-    result = _crawl_site(site)
+    result = _crawl_site(site, get_data_dir())
     return jsonify(result if result else {'count': 0})
 
 
@@ -306,17 +315,26 @@ def update_config():
     if 'crawl_interval_hours' in data:
         hours = int(data['crawl_interval_hours'])
         cfg['crawl_interval_hours'] = hours
-        save_config(cfg)
         if scheduler.get_job('crawl_job'):
             scheduler.reschedule_job('crawl_job', trigger='interval', hours=hours)
+    if 'data_dir' in data:
+        raw = str(data['data_dir']).strip()
+        if raw:
+            try:
+                Path(raw).mkdir(parents=True, exist_ok=True)
+            except Exception:
+                return jsonify({'error': '路径无效或无权限'}), 400
+        cfg['data_dir'] = raw
+    save_config(cfg)
     return jsonify(cfg)
 
 
 @app.route('/api/results/<site_id>', methods=['GET'])
 def get_results(site_id):
-    if not DATA_DIR.exists():
+    data_dir = get_data_dir()
+    if not data_dir.exists():
         return jsonify([])
-    files = sorted(DATA_DIR.glob(f'*_{site_id}.json'), reverse=True)
+    files = sorted(data_dir.glob(f'*_{site_id}.json'), reverse=True)
     result = []
     for f in files:
         try:
@@ -337,7 +355,7 @@ def get_results(site_id):
 def get_result_file(site_id, filename):
     if not re.match(r'^[\w\-\.]+$', filename):
         return jsonify({'error': '非法文件名'}), 400
-    filepath = DATA_DIR / filename
+    filepath = get_data_dir() / filename
     if not filepath.exists():
         return jsonify({'error': '未找到'}), 404
     with open(filepath, 'r', encoding='utf-8') as f:
