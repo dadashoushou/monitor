@@ -417,7 +417,7 @@ def analyze_site(site_id):
 
     from scrapling import Fetcher
     try:
-        page = Fetcher().get(site['url'], stealthy_headers=True, timeout=15)
+        page = Fetcher().get(site['url'], stealthy_headers=True, timeout=30)
         html = page.body.decode('utf-8', errors='ignore') if isinstance(page.body, bytes) else page.body
     except Exception as e:
         return jsonify({'error': f'抓取页面失败: {e}'}), 500

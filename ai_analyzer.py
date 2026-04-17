@@ -74,7 +74,7 @@ def analyze_page(html: str, url: str, ai_config: dict) -> dict:
             'Authorization': f'Bearer {ai_config["api_key"]}',
             'Content-Type': 'application/json',
         },
-        timeout=60,
+        timeout=120,
     )
     resp.raise_for_status()
 
