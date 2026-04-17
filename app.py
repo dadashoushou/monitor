@@ -17,6 +17,7 @@ import feedparser
 from urllib.parse import urljoin
 from apscheduler.schedulers.background import BackgroundScheduler
 from crawler import crawl_site as _crawl_site, crawl_all as _crawl_all
+from ai_analyzer import analyze_page as _analyze_page
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -145,6 +146,7 @@ def add_site():
         'status': 'pending',
         'last_checked': None,
         'crawl_mode': crawl_mode,
+        'selectors': data.get('selectors'),
     }
     sites.append(site)
     save_sites(sites)
@@ -166,6 +168,8 @@ def update_site(site_id):
                 mode = data['crawl_mode']
                 if mode in ('auto', 'html', 'js', 'stealth'):
                     site['crawl_mode'] = mode
+            if 'selectors' in data:
+                site['selectors'] = data['selectors']
             save_sites(sites)
             return jsonify(site)
     return jsonify({'error': '未找到'}), 404
@@ -395,6 +399,77 @@ def get_result_file(site_id, filename):
         return jsonify({'error': '未找到'}), 404
     with open(filepath, 'r', encoding='utf-8') as f:
         return jsonify(json.load(f))
+
+
+# ── AI 分析相关 ──────────────────────────────────────────
+
+@app.route('/api/config/ai', methods=['GET'])
+def get_ai_config():
+    cfg = load_config()
+    ai = cfg.get('ai', {})
+    key = ai.get('api_key', '')
+    masked = ('****' + key[-4:]) if len(key) > 4 else '****'
+    return jsonify({
+        'api_url': ai.get('api_url', ''),
+        'api_key_masked': masked,
+        'model': ai.get('model', ''),
+    })
+
+
+@app.route('/api/config/ai', methods=['POST'])
+def update_ai_config():
+    data = request.get_json()
+    cfg = load_config()
+    ai = cfg.get('ai', {})
+    if 'api_url' in data:
+        ai['api_url'] = data['api_url'].strip()
+    if 'api_key' in data and data['api_key'].strip():
+        ai['api_key'] = data['api_key'].strip()
+    if 'model' in data:
+        ai['model'] = data['model'].strip()
+    cfg['ai'] = ai
+    save_config(cfg)
+    return jsonify({'ok': True})
+
+
+@app.route('/api/sites/<site_id>/analyze', methods=['POST'])
+def analyze_site(site_id):
+    sites = load_sites()
+    site = next((s for s in sites if s['id'] == site_id), None)
+    if not site:
+        return jsonify({'error': '未找到'}), 404
+
+    cfg = load_config()
+    ai = cfg.get('ai', {})
+    if not ai.get('api_url') or not ai.get('api_key') or not ai.get('model'):
+        return jsonify({'error': '请先配置 AI API（地址、密钥、模型）'}), 400
+
+    from scrapling import Fetcher
+    try:
+        page = Fetcher().get(site['url'], stealthy_headers=True, timeout=15)
+        html = page.body.decode('utf-8', errors='ignore') if isinstance(page.body, bytes) else page.body
+    except Exception as e:
+        return jsonify({'error': f'抓取页面失败: {e}'}), 500
+
+    try:
+        selectors = _analyze_page(html, site['url'], ai)
+    except Exception as e:
+        return jsonify({'error': f'AI 分析失败: {e}'}), 500
+
+    for s in sites:
+        if s['id'] == site_id:
+            s['selectors'] = selectors
+            break
+    save_sites(sites)
+
+    from crawler import _extract_articles
+    preview = _extract_articles(page, site['url'], selectors)
+
+    return jsonify({
+        'selectors': selectors,
+        'preview': preview[:10],
+        'preview_count': len(preview),
+    })
 
 
 if __name__ == '__main__':

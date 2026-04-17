@@ -15,10 +15,27 @@ DATE_PATTERN = re.compile(r'\d{4}[-/_]\d{2}')
 ARTICLE_PATTERN = re.compile(r'/article/')
 
 
-def _extract_articles(page, site_url: str) -> list[dict]:
+def _extract_time_from_url(href: str, pattern: re.Pattern) -> str:
+    """用正则从 URL 提取时间，返回 YYYY-MM-DD 或空字符串"""
+    m = pattern.search(href)
+    if not m:
+        return ''
+    g = m.groupdict()
+    y, mo, d = g.get('year', ''), g.get('month', ''), g.get('day', '')
+    if y and mo and d:
+        return f'{y}-{mo}-{d}'
+    if y and mo:
+        return f'{y}-{mo}'
+    return ''
+
+
+def _extract_articles(page, site_url: str, selectors: dict = None) -> list[dict]:
     """从 Scrapling Response 中提取文章链接列表，最多 30 条。
-    筛选规则：标题 8-80 字符，href 含日期模式或 /article/ 路径。
+    如果提供 selectors 则使用 AI 生成的规则，否则走硬编码逻辑。
     """
+    if selectors and selectors.get('css_selector'):
+        return _extract_with_selectors(page, site_url, selectors)
+
     items = []
     for el in page.css('a[href]'):
         text = el.text.strip() if el.text else ''
@@ -30,6 +47,54 @@ def _extract_articles(page, site_url: str) -> list[dict]:
         if not href.startswith('http'):
             href = urljoin(site_url, href)
         items.append({'title': text, 'url': href, 'published': ''})
+        if len(items) >= 30:
+            break
+    return items
+
+
+def _extract_with_selectors(page, site_url: str, selectors: dict) -> list[dict]:
+    """使用 AI 生成的 selectors 规则提取文章列表"""
+    css = selectors['css_selector']
+    url_pat = re.compile(selectors['url_pattern']) if selectors.get('url_pattern') else None
+    title_attr = selectors.get('title_attr')
+    min_len = selectors.get('min_title_len', 8)
+    max_len = selectors.get('max_title_len', 80)
+
+    time_source = selectors.get('time_source')
+    time_url_pat = None
+    if time_source == 'time_url' and selectors.get('time_url_pattern'):
+        time_url_pat = re.compile(selectors['time_url_pattern'])
+    time_css = selectors.get('time_css') if time_source == 'time_css' else None
+
+    items = []
+    for el in page.css(css):
+        if title_attr:
+            text = (el.attrib.get(title_attr, '') or '').strip()
+        else:
+            text = el.text.strip() if el.text else ''
+        href = el.attrib.get('href', '')
+
+        if not (min_len <= len(text) <= max_len):
+            continue
+        if url_pat and not url_pat.search(href):
+            continue
+        if not href.startswith('http'):
+            href = urljoin(site_url, href)
+
+        published = ''
+        if time_url_pat:
+            published = _extract_time_from_url(href, time_url_pat)
+        elif time_css:
+            try:
+                parent = el.parent
+                if parent:
+                    time_els = parent.css(time_css)
+                    if time_els:
+                        published = (time_els[0].text or '').strip()
+            except Exception:
+                pass
+
+        items.append({'title': text, 'url': href, 'published': published})
         if len(items) >= 30:
             break
     return items
@@ -68,7 +133,7 @@ def crawl_html(site: dict) -> list[dict]:
         page = Fetcher().get(site['url'], stealthy_headers=True, timeout=10)
     except Exception:
         return []
-    return _extract_articles(page, site['url'])
+    return _extract_articles(page, site['url'], site.get('selectors'))
 
 
 def crawl_js(site: dict) -> list[dict]:
@@ -80,7 +145,7 @@ def crawl_js(site: dict) -> list[dict]:
         )
     except Exception:
         return []
-    return _extract_articles(page, site['url'])
+    return _extract_articles(page, site['url'], site.get('selectors'))
 
 
 def crawl_stealth(site: dict) -> list[dict]:
@@ -92,7 +157,7 @@ def crawl_stealth(site: dict) -> list[dict]:
         )
     except Exception:
         return []
-    return _extract_articles(page, site['url'])
+    return _extract_articles(page, site['url'], site.get('selectors'))
 
 
 def crawl_site(site: dict) -> dict | None:

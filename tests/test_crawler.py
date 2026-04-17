@@ -300,3 +300,100 @@ def test_crawl_all_empty_sites(tmp_path):
     results = crawl_all([], tmp_path)
     assert results == []
     assert list(tmp_path.glob('*.json')) == []
+
+
+def test_extract_articles_with_css_selector():
+    """selectors 路径：用 css_selector 提取文章"""
+    from crawler import _extract_articles
+
+    mock_page = MagicMock()
+    mock_page.css.return_value = [
+        _make_mock_element('AI生成规则提取的文章标题', '/news/12345.html', {'href': '/news/12345.html'}),
+        _make_mock_element('第二篇文章标题也足够长', '/news/67890.html', {'href': '/news/67890.html'}),
+    ]
+
+    selectors = {'css_selector': 'a.news-link', 'min_title_len': 8, 'max_title_len': 80}
+    items = _extract_articles(mock_page, 'https://example.com', selectors)
+    assert len(items) == 2
+    assert items[0]['title'] == 'AI生成规则提取的文章标题'
+    mock_page.css.assert_called_with('a.news-link')
+
+
+def test_extract_articles_with_url_pattern():
+    """selectors 路径：url_pattern 过滤非文章链接"""
+    from crawler import _extract_articles
+
+    mock_page = MagicMock()
+    mock_page.css.return_value = [
+        _make_mock_element('匹配URL模式的文章标题', '/article/12345.html', {'href': '/article/12345.html'}),
+        _make_mock_element('不匹配URL模式的链接标题', '/about/contact.html', {'href': '/about/contact.html'}),
+    ]
+
+    selectors = {'css_selector': 'a', 'url_pattern': r'/article/', 'min_title_len': 8, 'max_title_len': 80}
+    items = _extract_articles(mock_page, 'https://example.com', selectors)
+    assert len(items) == 1
+    assert items[0]['url'] == 'https://example.com/article/12345.html'
+
+
+def test_extract_articles_time_url():
+    """selectors 路径：从 URL 提取发布时间"""
+    from crawler import _extract_articles
+
+    mock_page = MagicMock()
+    mock_page.css.return_value = [
+        _make_mock_element('含日期URL的文章标题足够长', '/2026/04/17/news.html', {'href': '/2026/04/17/news.html'}),
+    ]
+
+    selectors = {
+        'css_selector': 'a',
+        'time_source': 'time_url',
+        'time_url_pattern': r'/(?P<year>\d{4})/(?P<month>\d{2})/(?P<day>\d{2})/',
+        'min_title_len': 8,
+        'max_title_len': 80,
+    }
+    items = _extract_articles(mock_page, 'https://example.com', selectors)
+    assert len(items) == 1
+    assert items[0]['published'] == '2026-04-17'
+
+
+def test_extract_articles_time_css():
+    """selectors 路径：从 HTML 元素提取发布时间"""
+    from crawler import _extract_articles
+
+    time_el = MagicMock()
+    time_el.text = '2026-04-17 10:00'
+
+    parent = MagicMock()
+    parent.css.return_value = [time_el]
+
+    link_el = _make_mock_element('有时间元素的文章标题足够长', '/news/123.html', {'href': '/news/123.html'})
+    link_el.parent = parent
+
+    mock_page = MagicMock()
+    mock_page.css.return_value = [link_el]
+
+    selectors = {
+        'css_selector': 'a',
+        'time_source': 'time_css',
+        'time_css': 'span.time',
+        'min_title_len': 8,
+        'max_title_len': 80,
+    }
+    items = _extract_articles(mock_page, 'https://example.com', selectors)
+    assert len(items) == 1
+    assert items[0]['published'] == '2026-04-17 10:00'
+
+
+def test_extract_articles_selectors_fallback():
+    """selectors=None 时走旧的硬编码逻辑"""
+    from crawler import _extract_articles
+
+    mock_page = MagicMock()
+    mock_page.css.return_value = [
+        _make_mock_element('硬编码逻辑匹配日期URL的标题', '/2024/03/article-1', {'href': '/2024/03/article-1'}),
+    ]
+
+    items = _extract_articles(mock_page, 'https://example.com', None)
+    assert len(items) == 1
+    assert items[0]['title'] == '硬编码逻辑匹配日期URL的标题'
+    mock_page.css.assert_called_with('a[href]')
