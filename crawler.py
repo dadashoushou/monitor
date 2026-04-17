@@ -19,6 +19,26 @@ HEADERS = {'User-Agent': 'Mozilla/5.0 (compatible; openmonitor-crawler/1.0)'}
 DATE_PATTERN = re.compile(r'\d{4}[-/_]\d{2}')
 
 
+def _extract_articles(page, site_url: str) -> list[dict]:
+    """从 Scrapling Response 中提取文章链接列表，最多 30 条。
+    筛选规则：标题 8-80 字符，href 含日期模式 (YYYY-MM 或 YYYY/MM)。
+    """
+    items = []
+    for el in page.css('a[href]'):
+        text = el.text.strip() if el.text else ''
+        href = el.attrib.get('href', '')
+        if not (8 <= len(text) <= 80):
+            continue
+        if not DATE_PATTERN.search(href):
+            continue
+        if not href.startswith('http'):
+            href = urljoin(site_url, href)
+        items.append({'title': text, 'url': href, 'published': ''})
+        if len(items) >= 30:
+            break
+    return items
+
+
 def _parsed_time_to_iso(t) -> str:
     """将 feedparser 的 time.struct_time 转为 ISO 字符串，失败返回空字符串"""
     if not t:
