@@ -87,11 +87,11 @@ def test_crawl_html_calls_fetcher_and_extract():
     ]
 
     with patch('crawler.Fetcher') as MockFetcher:
-        MockFetcher.return_value.get.return_value = mock_page
+        MockFetcher.get.return_value = mock_page
         items = crawl_html(site)
 
-    MockFetcher.return_value.get.assert_called_once_with(
-        'https://example.com', stealthy_headers=True, timeout=10
+    MockFetcher.get.assert_called_once_with(
+        'https://example.com', timeout=10
     )
     assert len(items) == 1
     assert items[0]['title'] == '有效文章标题长度足够了'
@@ -104,7 +104,7 @@ def test_crawl_html_returns_empty_on_exception():
     site = {'url': 'https://example.com', 'id': '123', 'name': 'Test'}
 
     with patch('crawler.Fetcher') as MockFetcher:
-        MockFetcher.return_value.get.side_effect = Exception('network error')
+        MockFetcher.get.side_effect = Exception('network error')
         items = crawl_html(site)
 
     assert items == []
@@ -121,10 +121,10 @@ def test_crawl_js_calls_dynamic_fetcher():
     ]
 
     with patch('crawler.DynamicFetcher') as MockDF:
-        MockDF.return_value.fetch.return_value = mock_page
+        MockDF.fetch.return_value = mock_page
         items = crawl_js(site)
 
-    MockDF.return_value.fetch.assert_called_once_with(
+    MockDF.fetch.assert_called_once_with(
         'https://spa-site.com',
         headless=True, network_idle=True, disable_resources=True, timeout=30000
     )
@@ -136,7 +136,7 @@ def test_crawl_js_returns_empty_on_exception():
 
     site = {'url': 'https://spa-site.com', 'id': '456', 'name': 'SPA'}
     with patch('crawler.DynamicFetcher') as MockDF:
-        MockDF.return_value.fetch.side_effect = Exception('browser crash')
+        MockDF.fetch.side_effect = Exception('browser crash')
         items = crawl_js(site)
     assert items == []
 
@@ -152,10 +152,10 @@ def test_crawl_stealth_calls_stealthy_fetcher():
     ]
 
     with patch('crawler.StealthyFetcher') as MockSF:
-        MockSF.return_value.fetch.return_value = mock_page
+        MockSF.fetch.return_value = mock_page
         items = crawl_stealth(site)
 
-    MockSF.return_value.fetch.assert_called_once_with(
+    MockSF.fetch.assert_called_once_with(
         'https://protected.com',
         headless=True, network_idle=True, disable_resources=True, timeout=30000
     )
@@ -167,7 +167,7 @@ def test_crawl_stealth_returns_empty_on_exception():
 
     site = {'url': 'https://protected.com', 'id': '789', 'name': 'Protected'}
     with patch('crawler.StealthyFetcher') as MockSF:
-        MockSF.return_value.fetch.side_effect = Exception('blocked')
+        MockSF.fetch.side_effect = Exception('blocked')
         items = crawl_stealth(site)
     assert items == []
 

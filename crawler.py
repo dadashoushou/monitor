@@ -130,7 +130,7 @@ def crawl_rss(site: dict) -> list[dict]:
 def crawl_html(site: dict) -> list[dict]:
     """用 Scrapling Fetcher 抓取首页，提取文章链接"""
     try:
-        page = Fetcher().get(site['url'], stealthy_headers=True, timeout=10)
+        page = Fetcher.get(site['url'], timeout=10)
     except Exception:
         return []
     return _extract_articles(page, site['url'], site.get('selectors'))
@@ -139,7 +139,7 @@ def crawl_html(site: dict) -> list[dict]:
 def crawl_js(site: dict) -> list[dict]:
     """用 Scrapling DynamicFetcher 抓取 JS 渲染页面"""
     try:
-        page = DynamicFetcher().fetch(
+        page = DynamicFetcher.fetch(
             site['url'],
             headless=True, network_idle=True, disable_resources=True, timeout=30000
         )
@@ -151,7 +151,7 @@ def crawl_js(site: dict) -> list[dict]:
 def crawl_stealth(site: dict) -> list[dict]:
     """用 Scrapling StealthyFetcher 抓取有 bot 防护的页面"""
     try:
-        page = StealthyFetcher().fetch(
+        page = StealthyFetcher.fetch(
             site['url'],
             headless=True, network_idle=True, disable_resources=True, timeout=30000
         )
