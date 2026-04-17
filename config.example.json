@@ -1,0 +1,9 @@
+{
+  "crawl_interval_hours": 6,
+  "data_dir": "",
+  "ai": {
+    "api_url": "https://api.deepseek.com/v1",
+    "api_key": "your-api-key-here",
+    "model": "deepseek-chat"
+  }
+}
