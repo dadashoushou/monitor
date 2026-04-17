@@ -130,6 +130,11 @@ def add_site():
     data = request.get_json()
     if not data.get('name') or not data.get('url'):
         return jsonify({'error': '名称和URL不能为空'}), 400
+
+    crawl_mode = data.get('crawl_mode', 'auto')
+    if crawl_mode not in ('auto', 'html', 'js', 'stealth'):
+        crawl_mode = 'auto'
+
     sites = load_sites()
     site = {
         'id': str(uuid.uuid4()),
@@ -139,6 +144,7 @@ def add_site():
         'rss_url': None,
         'status': 'pending',
         'last_checked': None,
+        'crawl_mode': crawl_mode,
     }
     sites.append(site)
     save_sites(sites)
@@ -156,6 +162,10 @@ def update_site(site_id):
             if data.get('url'):
                 site['url'] = _normalize_url(data['url'].strip())
             site['note'] = data.get('note', site.get('note', '')).strip()
+            if 'crawl_mode' in data:
+                mode = data['crawl_mode']
+                if mode in ('auto', 'html', 'js', 'stealth'):
+                    site['crawl_mode'] = mode
             save_sites(sites)
             return jsonify(site)
     return jsonify({'error': '未找到'}), 404
