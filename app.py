@@ -403,35 +403,6 @@ def get_result_file(site_id, filename):
 
 # ── AI 分析相关 ──────────────────────────────────────────
 
-@app.route('/api/config/ai', methods=['GET'])
-def get_ai_config():
-    cfg = load_config()
-    ai = cfg.get('ai', {})
-    key = ai.get('api_key', '')
-    masked = ('****' + key[-4:]) if len(key) > 4 else '****'
-    return jsonify({
-        'api_url': ai.get('api_url', ''),
-        'api_key_masked': masked,
-        'model': ai.get('model', ''),
-    })
-
-
-@app.route('/api/config/ai', methods=['POST'])
-def update_ai_config():
-    data = request.get_json()
-    cfg = load_config()
-    ai = cfg.get('ai', {})
-    if 'api_url' in data:
-        ai['api_url'] = data['api_url'].strip()
-    if 'api_key' in data and data['api_key'].strip():
-        ai['api_key'] = data['api_key'].strip()
-    if 'model' in data:
-        ai['model'] = data['model'].strip()
-    cfg['ai'] = ai
-    save_config(cfg)
-    return jsonify({'ok': True})
-
-
 @app.route('/api/sites/<site_id>/analyze', methods=['POST'])
 def analyze_site(site_id):
     sites = load_sites()
@@ -442,7 +413,7 @@ def analyze_site(site_id):
     cfg = load_config()
     ai = cfg.get('ai', {})
     if not ai.get('api_url') or not ai.get('api_key') or not ai.get('model'):
-        return jsonify({'error': '请先配置 AI API（地址、密钥、模型）'}), 400
+        return jsonify({'error': '请先在 config.json 中配置 ai 字段（api_url、api_key、model）'}), 400
 
     from scrapling import Fetcher
     try:

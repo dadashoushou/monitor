@@ -84,10 +84,6 @@
   .data-dir-input.saved { border-color: #16a34a; }
   .data-dir-input.error { border-color: #ef4444; }
   .btn-ai { background: #7c3aed; color: #fff; }
-  .ai-bar { background: #fff; border-bottom: 1px solid #e5e5e5; padding: 8px 24px; display: flex; align-items: center; gap: 10px; font-size: 13px; }
-  .ai-bar label { color: #555; font-weight: 500; font-size: 12px; }
-  .ai-bar input { padding: 5px 8px; border: 1px solid #d4d4d4; border-radius: 5px; font-size: 12px; outline: none; }
-  .ai-bar input:focus { border-color: #7c3aed; }
   .selectors-preview { margin-top: 14px; padding: 10px; background: #f9fafb; border: 1px solid #e5e5e5; border-radius: 6px; font-size: 11px; font-family: monospace; white-space: pre-wrap; max-height: 160px; overflow-y: auto; display: none; }
   .selectors-preview.active { display: block; }
 </style>
@@ -108,15 +104,6 @@
   <input id="dataDirInput" class="data-dir-input" type="text" placeholder="数据目录（绝对路径，空=默认）" title="抓取结果 JSON 文件保存目录">
   <button class="btn btn-secondary" id="btnSaveDataDir">保存路径</button>
   <button class="btn btn-primary" onclick="openModal()">+ 添加网站</button>
-</div>
-
-<div class="ai-bar" id="aiBar">
-  <label>AI API:</label>
-  <input id="aiUrl" placeholder="API 地址" style="width:200px">
-  <input id="aiKey" type="password" placeholder="API Key" style="width:140px">
-  <input id="aiModel" placeholder="模型名称" style="width:120px">
-  <button class="btn btn-sm btn-ai" onclick="saveAiConfig()">保存 AI 设置</button>
-  <span id="aiStatus" style="font-size:11px;color:#999"></span>
 </div>
 
 <div class="main">
@@ -485,37 +472,6 @@ document.getElementById('btnCrawlAll').addEventListener('click', async () => {
   startCrawlPolling();
 });
 
-async function loadAiConfig() {
-  try {
-    const res = await fetch('/api/config/ai');
-    const cfg = await res.json();
-    document.getElementById('aiUrl').value = cfg.api_url || '';
-    document.getElementById('aiModel').value = cfg.model || '';
-    document.getElementById('aiKey').placeholder = cfg.api_key_masked || 'API Key';
-  } catch(e) {}
-}
-
-async function saveAiConfig() {
-  const btn = document.querySelector('#aiBar .btn-ai');
-  const status = document.getElementById('aiStatus');
-  btn.disabled = true;
-  const body = { api_url: document.getElementById('aiUrl').value.trim(), model: document.getElementById('aiModel').value.trim() };
-  const key = document.getElementById('aiKey').value.trim();
-  if (key) body.api_key = key;
-  const res = await fetch('/api/config/ai', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
-  btn.disabled = false;
-  if (res.ok) {
-    status.textContent = '已保存 ✓';
-    status.style.color = '#16a34a';
-    document.getElementById('aiKey').value = '';
-    loadAiConfig();
-  } else {
-    status.textContent = '保存失败';
-    status.style.color = '#ef4444';
-  }
-  setTimeout(() => { status.textContent = ''; }, 2000);
-}
-
 async function analyzeSite() {
   if (!editingId) return;
   await _doAnalyze(editingId);
@@ -562,7 +518,6 @@ async function _doAnalyze(siteId) {
 
 loadSitesWithCrawlInfo();
 initIntervalSelect();
-loadAiConfig();
 </script>
 </body>
 </html>
