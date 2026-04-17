@@ -59,6 +59,23 @@ def test_extract_articles_absolute_url():
     assert items[0]['url'] == 'https://other.com/2024/05/post'
 
 
+def test_extract_articles_article_path():
+    """href 含 /article/ 路径也能匹配（如网易新闻）"""
+    from crawler import _extract_articles
+
+    mock_page = MagicMock()
+    mock_page.css.return_value = [
+        _make_mock_element('网易新闻的文章标题足够长', '/dy/article/KQLEUTTL000181BR.html',
+                           {'href': '/dy/article/KQLEUTTL000181BR.html'}),
+        _make_mock_element('无日期也无article的链接', '/some/random/path',
+                           {'href': '/some/random/path'}),
+    ]
+
+    items = _extract_articles(mock_page, 'https://www.163.com')
+    assert len(items) == 1
+    assert items[0]['url'] == 'https://www.163.com/dy/article/KQLEUTTL000181BR.html'
+
+
 def test_crawl_html_calls_fetcher_and_extract():
     """crawl_html 应使用 Fetcher.get 并调用 _extract_articles"""
     from crawler import crawl_html

@@ -12,11 +12,12 @@ import feedparser
 from scrapling import Fetcher, DynamicFetcher, StealthyFetcher
 
 DATE_PATTERN = re.compile(r'\d{4}[-/_]\d{2}')
+ARTICLE_PATTERN = re.compile(r'/article/')
 
 
 def _extract_articles(page, site_url: str) -> list[dict]:
     """从 Scrapling Response 中提取文章链接列表，最多 30 条。
-    筛选规则：标题 8-80 字符，href 含日期模式 (YYYY-MM 或 YYYY/MM)。
+    筛选规则：标题 8-80 字符，href 含日期模式或 /article/ 路径。
     """
     items = []
     for el in page.css('a[href]'):
@@ -24,7 +25,7 @@ def _extract_articles(page, site_url: str) -> list[dict]:
         href = el.attrib.get('href', '')
         if not (8 <= len(text) <= 80):
             continue
-        if not DATE_PATTERN.search(href):
+        if not DATE_PATTERN.search(href) and not ARTICLE_PATTERN.search(href):
             continue
         if not href.startswith('http'):
             href = urljoin(site_url, href)
