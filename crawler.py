@@ -9,13 +9,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urljoin
 
 import feedparser
-import requests
-import urllib3
-from bs4 import BeautifulSoup
+from scrapling import Fetcher, DynamicFetcher, StealthyFetcher
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-HEADERS = {'User-Agent': 'Mozilla/5.0 (compatible; openmonitor-crawler/1.0)'}
 DATE_PATTERN = re.compile(r'\d{4}[-/_]\d{2}')
 
 
@@ -67,45 +62,36 @@ def crawl_rss(site: dict) -> list[dict]:
 
 
 def crawl_html(site: dict) -> list[dict]:
-    """用 requests+BeautifulSoup 抓取首页，提取文章链接，最多 30 条"""
+    """用 Scrapling Fetcher 抓取首页，提取文章链接"""
     try:
-        r = requests.get(site['url'], headers=HEADERS, timeout=10, verify=False)
-        r.raise_for_status()
+        page = Fetcher().get(site['url'], stealthy_headers=True, timeout=10)
     except Exception:
         return []
+    return _extract_articles(page, site['url'])
 
-    soup = BeautifulSoup(r.text, 'html.parser')
-    items = []
 
-    for a in soup.find_all('a', href=True):
-        text = a.get_text(strip=True)
-        href = a['href']
-        if not (8 <= len(text) <= 80):
-            continue
-        if not DATE_PATTERN.search(href):
-            continue
+def crawl_js(site: dict) -> list[dict]:
+    """用 Scrapling DynamicFetcher 抓取 JS 渲染页面"""
+    try:
+        page = DynamicFetcher().fetch(
+            site['url'],
+            headless=True, network_idle=True, disable_resources=True, timeout=30000
+        )
+    except Exception:
+        return []
+    return _extract_articles(page, site['url'])
 
-        if not href.startswith('http'):
-            href = urljoin(site['url'], href)
 
-        published = ''
-        parent = a.parent
-        if parent:
-            time_tag = parent.find('time')
-            if time_tag:
-                published = time_tag.get('datetime', time_tag.get_text(strip=True))
-            else:
-                for sibling in list(parent.children):
-                    sib_text = getattr(sibling, 'get_text', lambda **kw: str(sibling))(strip=True)
-                    if DATE_PATTERN.search(sib_text):
-                        published = sib_text
-                        break
-
-        items.append({'title': text, 'url': href, 'published': published})
-        if len(items) >= 30:
-            break
-
-    return items
+def crawl_stealth(site: dict) -> list[dict]:
+    """用 Scrapling StealthyFetcher 抓取有 bot 防护的页面"""
+    try:
+        page = StealthyFetcher().fetch(
+            site['url'],
+            headless=True, network_idle=True, disable_resources=True, timeout=30000
+        )
+    except Exception:
+        return []
+    return _extract_articles(page, site['url'])
 
 
 def crawl_site(site: dict) -> dict | None:
