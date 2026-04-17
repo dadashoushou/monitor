@@ -53,6 +53,22 @@
   .empty { text-align: center; padding: 48px; color: #999; font-size: 13px; }
   /* 抓取相关 */
   .badge-crawling { background: #dbeafe; color: #2563eb; }
+  /* 抓取模式 badge */
+  .badge-auto    { background: #f3f4f6; color: #6b7280; }
+  .badge-html    { background: #dbeafe; color: #2563eb; }
+  .badge-js      { background: #ede9fe; color: #7c3aed; }
+  .badge-stealth { background: #ffedd5; color: #c2410c; }
+  .field select {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #d4d4d4;
+    border-radius: 6px;
+    font-size: 13px;
+    outline: none;
+    background: #fff;
+    cursor: pointer;
+  }
+  .field select:focus { border-color: #1a1a1a; }
   select.interval-select { padding: 6px 10px; border-radius: 6px; border: 1px solid #d4d4d4; font-size: 13px; cursor: pointer; }
   .history-panel { margin-top: 16px; }
   .history-panel h3 { font-size: 13px; font-weight: 600; margin-bottom: 10px; color: #555; }
@@ -98,6 +114,7 @@
           <th>URL</th>
           <th>RSS 地址</th>
           <th>状态</th>
+          <th>抓取模式</th>
           <th>最后检测</th>
           <th>最近条目数</th>
           <th>上次抓取</th>
@@ -125,6 +142,15 @@
     <h2 id="modalTitle">添加网站</h2>
     <div class="field"><label>名称 *</label><input id="fName" placeholder="例：新华网"></div>
     <div class="field"><label>URL *</label><input id="fUrl" placeholder="https://example.com"></div>
+    <div class="field">
+      <label>抓取模式</label>
+      <select id="fCrawlMode">
+        <option value="auto">auto — 自动（默认）</option>
+        <option value="html">html — 静态抓取</option>
+        <option value="js">js — 动态渲染</option>
+        <option value="stealth">stealth — 隐蔽抓取</option>
+      </select>
+    </div>
     <div class="field"><label>备注</label><textarea id="fNote" placeholder="可选"></textarea></div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal()">取消</button>
@@ -248,6 +274,13 @@ const STATUS_LABEL = {
   checking: '检测中…',
 };
 
+const MODE_LABEL = {
+  auto: 'AUTO',
+  html: 'HTML',
+  js: 'JS',
+  stealth: 'STEALTH',
+};
+
 async function loadSites() {
   const res = await fetch('/api/sites');
   const sites = await res.json();
@@ -258,15 +291,18 @@ async function loadSites() {
 function renderTable(sites) {
   const tbody = document.getElementById('tbody');
   if (sites.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6"><div class="empty">还没有网站，点击右上角添加</div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9"><div class="empty">还没有网站，点击右上角添加</div></td></tr>';
     return;
   }
-  tbody.innerHTML = sites.map(s => `
+  tbody.innerHTML = sites.map(s => {
+    const mode = s.crawl_mode || 'auto';
+    return `
     <tr id="row-${s.id}">
       <td>${esc(s.name)}</td>
       <td class="url-cell"><a href="${esc(s.url)}" target="_blank">${esc(s.url)}</a></td>
       <td class="url-cell">${s.rss_url ? `<a href="${esc(s.rss_url)}" target="_blank">${esc(s.rss_url)}</a>` : '<span style="color:#ccc">—</span>'}</td>
       <td><span class="badge badge-${esc(s.status)}">${STATUS_LABEL[s.status] || esc(s.status)}</span></td>
+      <td><span class="badge badge-${esc(mode)}">${MODE_LABEL[mode] || esc(mode)}</span></td>
       <td style="color:#999;font-size:12px">${s.last_checked ? s.last_checked.replace('T', ' ') : '—'}</td>
       <td style="color:#999;font-size:12px">${s.crawl_count != null ? s.crawl_count : '—'}</td>
       <td style="color:#999;font-size:12px">${s.last_crawled ? s.last_crawled.replace('T', ' ') : '—'}</td>
@@ -277,8 +313,8 @@ function renderTable(sites) {
         <button class="btn btn-secondary btn-sm" onclick="openModal('${s.id}')">编辑</button>
         <button class="btn btn-danger btn-sm" onclick="deleteSite('${s.id}')">删除</button>
       </td>
-    </tr>
-  `).join('');
+    </tr>`;
+  }).join('');
 }
 
 function esc(str) {
@@ -313,11 +349,13 @@ function openModal(id) {
       document.getElementById('fName').value = s.name;
       document.getElementById('fUrl').value = s.url;
       document.getElementById('fNote').value = s.note || '';
+      document.getElementById('fCrawlMode').value = s.crawl_mode || 'auto';
     });
   } else {
     document.getElementById('fName').value = '';
     document.getElementById('fUrl').value = '';
     document.getElementById('fNote').value = '';
+    document.getElementById('fCrawlMode').value = 'auto';
   }
   document.getElementById('overlay').classList.add('open');
   setTimeout(() => document.getElementById('fName').focus(), 50);
@@ -335,10 +373,11 @@ async function saveSite() {
   const name = document.getElementById('fName').value.trim();
   const url = document.getElementById('fUrl').value.trim();
   const note = document.getElementById('fNote').value.trim();
+  const crawl_mode = document.getElementById('fCrawlMode').value;
   if (!name || !url) { alert('名称和URL不能为空'); return; }
   const btn = document.getElementById('btnSave');
   btn.disabled = true;
-  const body = JSON.stringify({ name, url, note });
+  const body = JSON.stringify({ name, url, note, crawl_mode });
   if (editingId) {
     await fetch('/api/sites/' + editingId, { method: 'PUT', headers: {'Content-Type':'application/json'}, body });
   } else {
@@ -346,7 +385,7 @@ async function saveSite() {
   }
   btn.disabled = false;
   closeModal();
-  loadSites();
+  loadSitesWithCrawlInfo();
 }
 
 document.getElementById('btnCheckAll').addEventListener('click', async () => {
