@@ -95,10 +95,25 @@ def crawl_stealth(site: dict) -> list[dict]:
 
 
 def crawl_site(site: dict) -> dict | None:
-    """抓取单个网站，返回结果 dict，无结果返回 None"""
-    if site.get('status') == 'rss':
-        items = crawl_rss(site)
-        method = 'rss'
+    """根据 crawl_mode 路由到对应抓取函数，返回结果 dict 或 None"""
+    mode = site.get('crawl_mode', 'auto')
+
+    if mode == 'auto':
+        if site.get('status') == 'rss':
+            items = crawl_rss(site)
+            method = 'rss'
+        else:
+            items = crawl_html(site)
+            method = 'html'
+    elif mode == 'html':
+        items = crawl_html(site)
+        method = 'html'
+    elif mode == 'js':
+        items = crawl_js(site)
+        method = 'js'
+    elif mode == 'stealth':
+        items = crawl_stealth(site)
+        method = 'stealth'
     else:
         items = crawl_html(site)
         method = 'html'
@@ -117,17 +132,33 @@ def crawl_site(site: dict) -> dict | None:
 
 
 def crawl_all(sites: list[dict], data_dir: Path) -> list[dict]:
-    """并发抓取所有网站，将所有结果合并写入一个 JSON 文件，返回有结果的列表"""
+    """按模式分组并发抓取：静态(rss/html/auto) max_workers=5，动态(js/stealth) max_workers=2"""
+    static_sites = []
+    dynamic_sites = []
+    for s in sites:
+        mode = s.get('crawl_mode', 'auto')
+        if mode in ('js', 'stealth'):
+            dynamic_sites.append(s)
+        else:
+            static_sites.append(s)
+
     results = []
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = {executor.submit(crawl_site, site): site for site in sites}
-        for future in as_completed(futures):
-            try:
-                result = future.result()
-                if result is not None:
-                    results.append(result)
-            except Exception:
-                pass
+
+    def _collect(executor_sites, max_workers):
+        if not executor_sites:
+            return
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(crawl_site, s): s for s in executor_sites}
+            for future in as_completed(futures):
+                try:
+                    result = future.result()
+                    if result is not None:
+                        results.append(result)
+                except Exception:
+                    pass
+
+    _collect(static_sites, 5)
+    _collect(dynamic_sites, 2)
 
     if results:
         data_dir.mkdir(parents=True, exist_ok=True)

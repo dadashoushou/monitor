@@ -153,3 +153,133 @@ def test_crawl_stealth_returns_empty_on_exception():
         MockSF.return_value.fetch.side_effect = Exception('blocked')
         items = crawl_stealth(site)
     assert items == []
+
+
+def test_crawl_site_auto_rss():
+    """auto 模式 + status=rss → 走 crawl_rss"""
+    from crawler import crawl_site
+
+    site = {'id': '1', 'name': 'RSS站点', 'url': 'https://rss.com',
+            'rss_url': 'https://rss.com/feed', 'status': 'rss', 'crawl_mode': 'auto'}
+
+    with patch('crawler.crawl_rss', return_value=[{'title': 'T', 'url': 'U', 'published': ''}]) as mock_rss:
+        result = crawl_site(site)
+
+    mock_rss.assert_called_once_with(site)
+    assert result['method'] == 'rss'
+    assert result['count'] == 1
+
+
+def test_crawl_site_auto_no_rss():
+    """auto 模式 + status!=rss → 走 crawl_html"""
+    from crawler import crawl_site
+
+    site = {'id': '2', 'name': 'HTML站点', 'url': 'https://html.com',
+            'status': 'no_rss', 'crawl_mode': 'auto'}
+
+    with patch('crawler.crawl_html', return_value=[{'title': 'T', 'url': 'U', 'published': ''}]) as mock_html:
+        result = crawl_site(site)
+
+    mock_html.assert_called_once_with(site)
+    assert result['method'] == 'html'
+
+
+def test_crawl_site_js_mode():
+    """js 模式 → 走 crawl_js"""
+    from crawler import crawl_site
+
+    site = {'id': '3', 'name': 'SPA站点', 'url': 'https://spa.com',
+            'status': 'no_rss', 'crawl_mode': 'js'}
+
+    with patch('crawler.crawl_js', return_value=[{'title': 'T', 'url': 'U', 'published': ''}]) as mock_js:
+        result = crawl_site(site)
+
+    mock_js.assert_called_once_with(site)
+    assert result['method'] == 'js'
+
+
+def test_crawl_site_stealth_mode():
+    """stealth 模式 → 走 crawl_stealth"""
+    from crawler import crawl_site
+
+    site = {'id': '4', 'name': '防护站点', 'url': 'https://cf.com',
+            'status': 'no_rss', 'crawl_mode': 'stealth'}
+
+    with patch('crawler.crawl_stealth', return_value=[{'title': 'T', 'url': 'U', 'published': ''}]) as mock_st:
+        result = crawl_site(site)
+
+    mock_st.assert_called_once_with(site)
+    assert result['method'] == 'stealth'
+
+
+def test_crawl_site_html_mode():
+    """html 模式 → 强制走 crawl_html，即使有 RSS"""
+    from crawler import crawl_site
+
+    site = {'id': '5', 'name': 'Force HTML', 'url': 'https://force.com',
+            'rss_url': 'https://force.com/feed', 'status': 'rss', 'crawl_mode': 'html'}
+
+    with patch('crawler.crawl_html', return_value=[{'title': 'T', 'url': 'U', 'published': ''}]) as mock_html:
+        result = crawl_site(site)
+
+    mock_html.assert_called_once_with(site)
+    assert result['method'] == 'html'
+
+
+def test_crawl_site_no_crawl_mode_defaults_auto():
+    """无 crawl_mode 字段 → 默认 auto"""
+    from crawler import crawl_site
+
+    site = {'id': '6', 'name': 'Old', 'url': 'https://old.com', 'status': 'no_rss'}
+
+    with patch('crawler.crawl_html', return_value=[{'title': 'T', 'url': 'U', 'published': ''}]) as mock_html:
+        result = crawl_site(site)
+
+    mock_html.assert_called_once_with(site)
+    assert result['method'] == 'html'
+
+
+def test_crawl_site_returns_none_on_empty():
+    """抓取结果为空 → 返回 None"""
+    from crawler import crawl_site
+
+    site = {'id': '7', 'name': 'Empty', 'url': 'https://empty.com', 'status': 'no_rss'}
+
+    with patch('crawler.crawl_html', return_value=[]):
+        result = crawl_site(site)
+
+    assert result is None
+
+
+def test_crawl_all_splits_by_mode(tmp_path):
+    """crawl_all 应将站点按模式分组并发"""
+    from crawler import crawl_all
+
+    sites = [
+        {'id': '1', 'name': 'A', 'url': 'https://a.com', 'status': 'rss',
+         'rss_url': 'https://a.com/feed', 'crawl_mode': 'auto'},
+        {'id': '2', 'name': 'B', 'url': 'https://b.com', 'status': 'no_rss',
+         'crawl_mode': 'js'},
+    ]
+
+    fake_result = lambda site: {
+        'site_id': site['id'], 'site_name': site['name'],
+        'site_url': site['url'], 'method': 'mock',
+        'count': 1, 'items': [{'title': 'T', 'url': 'U', 'published': ''}],
+    }
+
+    with patch('crawler.crawl_site', side_effect=fake_result):
+        results = crawl_all(sites, tmp_path)
+
+    assert len(results) == 2
+    json_files = list(tmp_path.glob('*.json'))
+    assert len(json_files) == 1
+
+
+def test_crawl_all_empty_sites(tmp_path):
+    """空站点列表 → 返回空，不写文件"""
+    from crawler import crawl_all
+
+    results = crawl_all([], tmp_path)
+    assert results == []
+    assert list(tmp_path.glob('*.json')) == []
