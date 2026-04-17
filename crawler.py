@@ -10,7 +10,10 @@ from urllib.parse import urljoin
 
 import feedparser
 import requests
+import urllib3
 from bs4 import BeautifulSoup
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 HEADERS = {'User-Agent': 'Mozilla/5.0 (compatible; openmonitor-crawler/1.0)'}
 DATE_PATTERN = re.compile(r'\d{4}[-/_]\d{2}')
@@ -46,7 +49,7 @@ def crawl_rss(site: dict) -> list[dict]:
 def crawl_html(site: dict) -> list[dict]:
     """用 requests+BeautifulSoup 抓取首页，提取文章链接，最多 30 条"""
     try:
-        r = requests.get(site['url'], headers=HEADERS, timeout=10)
+        r = requests.get(site['url'], headers=HEADERS, timeout=10, verify=False)
         r.raise_for_status()
     except Exception:
         return []
@@ -85,8 +88,8 @@ def crawl_html(site: dict) -> list[dict]:
     return items
 
 
-def crawl_site(site: dict, data_dir: Path) -> dict | None:
-    """抓取单个网站，有结果则写文件并返回 dict，否则返回 None"""
+def crawl_site(site: dict) -> dict | None:
+    """抓取单个网站，返回结果 dict，无结果返回 None"""
     if site.get('status') == 'rss':
         items = crawl_rss(site)
         method = 'rss'
@@ -97,33 +100,21 @@ def crawl_site(site: dict, data_dir: Path) -> dict | None:
     if not items:
         return None
 
-    data_dir.mkdir(parents=True, exist_ok=True)
-    crawled_at = datetime.now().isoformat(timespec='seconds')
-    ts = crawled_at.replace(':', '-').replace('T', '_')
-    safe_id = re.sub(r'[^\w\-]', '_', site['id'])
-    filename = f"{ts}_{safe_id}.json"
-
-    result = {
+    return {
         'site_id': site['id'],
         'site_name': site['name'],
         'site_url': site['url'],
-        'crawled_at': crawled_at,
         'method': method,
         'count': len(items),
         'items': items,
     }
 
-    with open(data_dir / filename, 'w', encoding='utf-8') as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
-
-    return result
-
 
 def crawl_all(sites: list[dict], data_dir: Path) -> list[dict]:
-    """并发抓取所有网站，返回有结果的列表"""
+    """并发抓取所有网站，将所有结果合并写入一个 JSON 文件，返回有结果的列表"""
     results = []
     with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = {executor.submit(crawl_site, site, data_dir): site for site in sites}
+        futures = {executor.submit(crawl_site, site): site for site in sites}
         for future in as_completed(futures):
             try:
                 result = future.result()
@@ -131,4 +122,18 @@ def crawl_all(sites: list[dict], data_dir: Path) -> list[dict]:
                     results.append(result)
             except Exception:
                 pass
+
+    if results:
+        data_dir.mkdir(parents=True, exist_ok=True)
+        crawled_at = datetime.now().isoformat(timespec='seconds')
+        ts = crawled_at.replace(':', '-').replace('T', '_')
+        filename = f"{ts}_all.json"
+        merged = {
+            'crawled_at': crawled_at,
+            'count': len(results),
+            'sites': results,
+        }
+        with open(data_dir / filename, 'w', encoding='utf-8') as f:
+            json.dump(merged, f, ensure_ascii=False, indent=2)
+
     return results

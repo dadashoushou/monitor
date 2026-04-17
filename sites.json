@@ -4,17 +4,26 @@
     "name": "防1",
     "url": "https://defenseone.com",
     "note": "",
-    "rss_url": null,
-    "status": "no_rss",
-    "last_checked": "2026-04-15T19:40:11"
+    "rss_url": "https://defenseone.com/rss/all/",
+    "status": "rss",
+    "last_checked": "2026-04-15T19:50:01"
   },
   {
     "id": "813db237-a6e7-4e76-a9d5-528d5d72a792",
     "name": "电子空间",
     "url": "https://electronicspecifier.com",
     "note": "",
+    "rss_url": "https://www.electronicspecifier.com/feed/",
+    "status": "rss",
+    "last_checked": "2026-04-15T19:45:36"
+  },
+  {
+    "id": "0a35ed21-2869-428b-8144-81630b7afbaa",
+    "name": "及时新闻",
+    "url": "https://newsnow.com",
+    "note": "",
     "rss_url": null,
     "status": "no_rss",
-    "last_checked": "2026-04-15T19:31:38"
+    "last_checked": "2026-04-15T20:09:29"
   }
 ]

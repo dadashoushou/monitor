@@ -12,10 +12,13 @@ from pathlib import Path
 from flask import Flask, jsonify, request, render_template
 import re
 import requests
+import urllib3
 import feedparser
 from urllib.parse import urljoin
 from apscheduler.schedulers.background import BackgroundScheduler
 from crawler import crawl_site as _crawl_site, crawl_all as _crawl_all
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 
@@ -60,8 +63,6 @@ def run_crawl_all():
     sites = load_sites()
     data_dir = get_data_dir()
     with crawl_lock:
-        if crawl_state['running']:
-            return
         crawl_state = {
             'running': True,
             'total': len(sites),
@@ -69,14 +70,10 @@ def run_crawl_all():
             'current': '',
             'last_run': crawl_state.get('last_run'),
         }
-    for i, site in enumerate(sites):
-        with crawl_lock:
-            crawl_state['current'] = site['name']
-        _crawl_site(site, data_dir)
-        with crawl_lock:
-            crawl_state['done'] = i + 1
+    _crawl_all(sites, data_dir)
     with crawl_lock:
         crawl_state['running'] = False
+        crawl_state['done'] = len(sites)
         crawl_state['last_run'] = datetime.now().isoformat(timespec='seconds')
 
 
@@ -180,7 +177,7 @@ RSS_PATHS = ['feed', 'feed/', 'rss', 'rss/', 'rss.xml', 'feed.xml', 'atom.xml', 
 
 def _is_valid_feed(url, timeout=5):
     try:
-        r = requests.get(url, headers=HEADERS, timeout=timeout, allow_redirects=True)
+        r = requests.get(url, headers=HEADERS, timeout=timeout, allow_redirects=True, verify=False)
         if r.status_code != 200:
             return False
         ct = r.headers.get('Content-Type', '')
@@ -197,7 +194,7 @@ def _detect_rss(root_url, timeout=5):
     """返回 (rss_url_or_None, status_string)"""
     html = None
     try:
-        r = requests.get(root_url, headers=HEADERS, timeout=timeout)
+        r = requests.get(root_url, headers=HEADERS, timeout=timeout, verify=False)
         html = r.text
         for pattern in [
             r'<link[^>]+(?:application/rss\+xml|application/atom\+xml)[^>]+href=["\']([^"\']+)["\']',
@@ -318,7 +315,16 @@ def crawl_one_route(site_id):
     site = next((s for s in sites if s['id'] == site_id), None)
     if not site:
         return jsonify({'error': '未找到'}), 404
-    result = _crawl_site(site, get_data_dir())
+    result = _crawl_site(site)
+    if result:
+        data_dir = get_data_dir()
+        data_dir.mkdir(parents=True, exist_ok=True)
+        crawled_at = datetime.now().isoformat(timespec='seconds')
+        ts = crawled_at.replace(':', '-').replace('T', '_')
+        filename = f"{ts}_{re.sub(r'[^\w\-]', '_', site['id'])}.json"
+        result['crawled_at'] = crawled_at
+        with open(data_dir / filename, 'w', encoding='utf-8') as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
     return jsonify(result if result else {'count': 0})
 
 
