@@ -30,19 +30,22 @@ def test_extract_articles_basic():
     assert items[0]['url'] == 'https://example.com/2024/03/article-1'
 
 
-def test_extract_articles_max_30():
-    """最多返回 30 条"""
+def test_extract_articles_max_items():
+    """默认最多返回 200 条，可通过 max_items 参数控制"""
     from crawler import _extract_articles
 
     elements = [
         _make_mock_element(f'有效文章标题编号{i:03d}很长', f'/2024/01/art-{i}', {'href': f'/2024/01/art-{i}'})
-        for i in range(50)
+        for i in range(250)
     ]
     mock_page = MagicMock()
     mock_page.css.return_value = elements
 
     items = _extract_articles(mock_page, 'https://example.com')
-    assert len(items) == 30
+    assert len(items) == 200
+
+    items_50 = _extract_articles(mock_page, 'https://example.com', max_items=50)
+    assert len(items_50) == 50
 
 
 def test_extract_articles_absolute_url():
@@ -179,7 +182,7 @@ def test_crawl_site_auto_rss():
     site = {'id': '1', 'name': 'RSS站点', 'url': 'https://rss.com',
             'rss_url': 'https://rss.com/feed', 'status': 'rss', 'crawl_mode': 'auto'}
 
-    with patch('crawler.crawl_rss', return_value=[{'title': 'T', 'url': 'U', 'published': ''}]) as mock_rss:
+    with patch('crawler.crawl_rss', return_value=[{'title': 'T', 'url': 'U', 'published': None, 'crawled_at': '2026-04-18T00:00:00'}]) as mock_rss:
         result = crawl_site(site)
 
     mock_rss.assert_called_once_with(site)
@@ -194,7 +197,7 @@ def test_crawl_site_auto_no_rss():
     site = {'id': '2', 'name': 'HTML站点', 'url': 'https://html.com',
             'status': 'no_rss', 'crawl_mode': 'auto'}
 
-    with patch('crawler.crawl_html', return_value=[{'title': 'T', 'url': 'U', 'published': ''}]) as mock_html:
+    with patch('crawler.crawl_html', return_value=[{'title': 'T', 'url': 'U', 'published': None, 'crawled_at': '2026-04-18T00:00:00'}]) as mock_html:
         result = crawl_site(site)
 
     mock_html.assert_called_once_with(site)
@@ -208,7 +211,7 @@ def test_crawl_site_js_mode():
     site = {'id': '3', 'name': 'SPA站点', 'url': 'https://spa.com',
             'status': 'no_rss', 'crawl_mode': 'js'}
 
-    with patch('crawler.crawl_js', return_value=[{'title': 'T', 'url': 'U', 'published': ''}]) as mock_js:
+    with patch('crawler.crawl_js', return_value=[{'title': 'T', 'url': 'U', 'published': None, 'crawled_at': '2026-04-18T00:00:00'}]) as mock_js:
         result = crawl_site(site)
 
     mock_js.assert_called_once_with(site)
@@ -222,7 +225,7 @@ def test_crawl_site_stealth_mode():
     site = {'id': '4', 'name': '防护站点', 'url': 'https://cf.com',
             'status': 'no_rss', 'crawl_mode': 'stealth'}
 
-    with patch('crawler.crawl_stealth', return_value=[{'title': 'T', 'url': 'U', 'published': ''}]) as mock_st:
+    with patch('crawler.crawl_stealth', return_value=[{'title': 'T', 'url': 'U', 'published': None, 'crawled_at': '2026-04-18T00:00:00'}]) as mock_st:
         result = crawl_site(site)
 
     mock_st.assert_called_once_with(site)
@@ -236,7 +239,7 @@ def test_crawl_site_html_mode():
     site = {'id': '5', 'name': 'Force HTML', 'url': 'https://force.com',
             'rss_url': 'https://force.com/feed', 'status': 'rss', 'crawl_mode': 'html'}
 
-    with patch('crawler.crawl_html', return_value=[{'title': 'T', 'url': 'U', 'published': ''}]) as mock_html:
+    with patch('crawler.crawl_html', return_value=[{'title': 'T', 'url': 'U', 'published': None, 'crawled_at': '2026-04-18T00:00:00'}]) as mock_html:
         result = crawl_site(site)
 
     mock_html.assert_called_once_with(site)
@@ -249,7 +252,7 @@ def test_crawl_site_no_crawl_mode_defaults_auto():
 
     site = {'id': '6', 'name': 'Old', 'url': 'https://old.com', 'status': 'no_rss'}
 
-    with patch('crawler.crawl_html', return_value=[{'title': 'T', 'url': 'U', 'published': ''}]) as mock_html:
+    with patch('crawler.crawl_html', return_value=[{'title': 'T', 'url': 'U', 'published': None, 'crawled_at': '2026-04-18T00:00:00'}]) as mock_html:
         result = crawl_site(site)
 
     mock_html.assert_called_once_with(site)
@@ -282,7 +285,7 @@ def test_crawl_all_splits_by_mode(tmp_path):
     fake_result = lambda site: {
         'site_id': site['id'], 'site_name': site['name'],
         'site_url': site['url'], 'method': 'mock',
-        'count': 1, 'items': [{'title': 'T', 'url': 'U', 'published': ''}],
+        'count': 1, 'items': [{'title': 'T', 'url': 'U', 'published': None, 'crawled_at': '2026-04-18T00:00:00'}],
     }
 
     with patch('crawler.crawl_site', side_effect=fake_result):
@@ -397,3 +400,60 @@ def test_extract_articles_selectors_fallback():
     assert len(items) == 1
     assert items[0]['title'] == '硬编码逻辑匹配日期URL的标题'
     mock_page.css.assert_called_with('a[href]')
+
+
+def test_parse_published_formats():
+    """_parse_published 支持多种日期格式"""
+    from crawler import _parse_published
+    from datetime import datetime
+
+    assert _parse_published('2026-04-17T10:30:00') == datetime(2026, 4, 17, 10, 30, 0)
+    assert _parse_published('2026-04-17 10:30') == datetime(2026, 4, 17, 10, 30)
+    assert _parse_published('2026-04-17') == datetime(2026, 4, 17)
+    assert _parse_published('') is None
+    assert _parse_published('invalid') is None
+
+
+def test_filter_by_age_keeps_recent():
+    """_filter_by_age 保留近期条目，过滤过期条目"""
+    from crawler import _filter_by_age
+    from datetime import datetime, timedelta
+
+    today = datetime.now().strftime('%Y-%m-%d')
+    old = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d')
+
+    items = [
+        {'title': 'new', 'url': 'http://a.com/1', 'published': today, 'crawled_at': today},
+        {'title': 'old', 'url': 'http://a.com/2', 'published': old, 'crawled_at': old},
+        {'title': 'no date', 'url': 'http://a.com/3', 'published': None, 'crawled_at': None},
+    ]
+    result = _filter_by_age(items, 7)
+    assert len(result) == 2
+    assert result[0]['title'] == 'new'
+    assert result[1]['title'] == 'no date'
+
+
+def test_filter_by_age_zero_disables():
+    """max_age_days=0 不过滤"""
+    from crawler import _filter_by_age
+
+    items = [{'title': 'a', 'url': 'http://a.com/1', 'published': '2020-01-01', 'crawled_at': '2020-01-01'}]
+    result = _filter_by_age(items, 0)
+    assert len(result) == 1
+
+
+def test_filter_by_age_crawled_at_fallback():
+    """published=None 时用 crawled_at 做时间过滤"""
+    from crawler import _filter_by_age
+    from datetime import datetime, timedelta
+
+    today = datetime.now().strftime('%Y-%m-%d')
+    old = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d')
+
+    items = [
+        {'title': 'recent crawl', 'url': 'http://a.com/1', 'published': None, 'crawled_at': today},
+        {'title': 'old crawl', 'url': 'http://a.com/2', 'published': None, 'crawled_at': old},
+    ]
+    result = _filter_by_age(items, 7)
+    assert len(result) == 1
+    assert result[0]['title'] == 'recent crawl'

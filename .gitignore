@@ -6,3 +6,5 @@ CLAUDE.md
 config.json
 sites.json
 data/
+frontend/config.json
+frontend/state.json

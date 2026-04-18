@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenMonitor — UI 改进设计稿</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f5f5f5;
+    --surface: #fff;
+    --border: #e5e5e5;
+    --border-light: #f0f0f0;
+    --text: #1a1a1a;
+    --text-muted: #666;
+    --text-dim: #999;
+    --primary: #1a1a1a;
+    --primary-fg: #fff;
+
+    /* Status badges */
+    --badge-rss-bg: #dcfce7; --badge-rss-fg: #16a34a;
+    --badge-no-rss-bg: #fef9c3; --badge-no-rss-fg: #a16207;
+    --badge-pending-bg: #f3f4f6; --badge-pending-fg: #6b7280;
+    --badge-timeout-bg: #fee2e2; --badge-timeout-fg: #dc2626;
+    --badge-error-bg: #fee2e2; --badge-error-fg: #dc2626;
+    --badge-checking-bg: #dbeafe; --badge-checking-fg: #2563eb;
+
+    /* NEW: Mode badges */
+    --badge-auto-bg: #f3f4f6; --badge-auto-fg: #6b7280;
+    --badge-html-bg: #dbeafe; --badge-html-fg: #2563eb;
+    --badge-js-bg: #ede9fe; --badge-js-fg: #7c3aed;
+    --badge-stealth-bg: #ffedd5; --badge-stealth-fg: #c2410c;
+
+    --radius: 8px;
+    --radius-pill: 99px;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.5; }
+
+  /* ── Design doc layout ── */
+  .design-doc { max-width: 1200px; margin: 0 auto; padding: 40px 24px 80px; }
+  .design-title { font-size: 28px; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.5px; }
+  .design-subtitle { font-size: 14px; color: var(--text-muted); margin-bottom: 48px; }
+
+  .section { margin-bottom: 56px; }
+  .section-label {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px;
+    color: var(--text-dim); margin-bottom: 20px; padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-desc { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; max-width: 640px; }
+
+  /* ── Palette swatches ── */
+  .palette-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .swatch {
+    border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .swatch-color { height: 56px; display: flex; align-items: center; justify-content: center; }
+  .swatch-info { padding: 10px 12px; font-size: 12px; }
+  .swatch-name { font-weight: 600; margin-bottom: 2px; }
+  .swatch-value { color: var(--text-dim); font-family: 'SF Mono', 'Cascadia Code', monospace; font-size: 11px; }
+
+  /* ── Badge specimens ── */
+  .badge-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .badge-row-label { font-size: 12px; color: var(--text-dim); min-width: 80px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px; border-radius: var(--radius-pill);
+    font-size: 11px; font-weight: 600; letter-spacing: 0.3px;
+  }
+  .badge-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+  .badge-auto { background: var(--badge-auto-bg); color: var(--badge-auto-fg); }
+  .badge-auto .badge-dot { background: var(--badge-auto-fg); }
+  .badge-html { background: var(--badge-html-bg); color: var(--badge-html-fg); }
+  .badge-html .badge-dot { background: var(--badge-html-fg); }
+  .badge-js { background: var(--badge-js-bg); color: var(--badge-js-fg); }
+  .badge-js .badge-dot { background: var(--badge-js-fg); }
+  .badge-stealth { background: var(--badge-stealth-bg); color: var(--badge-stealth-fg); }
+  .badge-stealth .badge-dot { background: var(--badge-stealth-fg); }
+
+  .badge-rss { background: var(--badge-rss-bg); color: var(--badge-rss-fg); }
+  .badge-no_rss { background: var(--badge-no-rss-bg); color: var(--badge-no-rss-fg); }
+  .badge-pending { background: var(--badge-pending-bg); color: var(--badge-pending-fg); }
+
+  /* ── Mockup frames ── */
+  .mockup-frame {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  }
+  .mockup-chrome {
+    height: 36px; background: #fafafa; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 14px; gap: 6px;
+  }
+  .mockup-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border); }
+
+  /* ── Table mockup ── */
+  .mock-header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 24px; display: flex; align-items: center; gap: 16px; height: 56px;
+  }
+  .mock-header h1 { font-size: 16px; font-weight: 600; flex: 1; }
+  .btn { padding: 7px 14px; border-radius: 6px; border: none; cursor: default; font-size: 13px; font-weight: 500; }
+  .btn-primary { background: var(--primary); color: var(--primary-fg); }
+  .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid #d4d4d4; }
+  .btn-danger { background: #ef4444; color: #fff; }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  select.interval-select { padding: 6px 10px; border-radius: 6px; border: 1px solid #d4d4d4; font-size: 13px; }
+
+  .mock-main { padding: 24px; }
+  .card { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: #fafafa; padding: 10px 14px; text-align: left; font-weight: 500; color: var(--text-muted); border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border-light); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  .url-cell { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .url-cell a { color: #2563eb; text-decoration: none; }
+  .actions { display: flex; gap: 6px; }
+  .dim { color: var(--text-dim); font-size: 12px; }
+
+  .new-col { background: #fffbeb !important; }
+  th.new-col { position: relative; }
+  th.new-col::after {
+    content: 'NEW'; position: absolute; top: 3px; right: 6px;
+    font-size: 9px; font-weight: 700; color: #d97706; letter-spacing: 0.5px;
+  }
+
+  /* ── Modal mockup ── */
+  .modal-mockup-wrap { display: flex; gap: 32px; flex-wrap: wrap; }
+  .modal-mockup {
+    background: var(--surface); border-radius: 10px; padding: 24px;
+    width: 420px; max-width: 100%; border: 1px solid var(--border);
+    box-shadow: 0 8px 30px rgba(0,0,0,.12);
+  }
+  .modal-mockup h2 { font-size: 15px; font-weight: 600; margin-bottom: 18px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12px; font-weight: 500; color: #555; margin-bottom: 5px; }
+  .field input, .field textarea, .field select {
+    width: 100%; padding: 8px 10px; border: 1px solid #d4d4d4; border-radius: 6px;
+    font-size: 13px; outline: none; font-family: var(--font); background: var(--surface);
+  }
+  .field textarea { resize: vertical; min-height: 60px; }
+  .field-new { position: relative; }
+  .field-new::before {
+    content: ''; position: absolute; inset: -4px; border: 2px dashed #d97706;
+    border-radius: 10px; pointer-events: none;
+  }
+  .field-new-tag {
+    position: absolute; top: -10px; right: 8px; background: #d97706; color: #fff;
+    font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 4px;
+    letter-spacing: 0.5px;
+  }
+  .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+
+  /* ── Mode description cards ── */
+  .mode-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+  .mode-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px; position: relative; overflow: hidden;
+  }
+  .mode-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  }
+  .mode-card.mc-auto::before { background: var(--badge-auto-fg); }
+  .mode-card.mc-html::before { background: var(--badge-html-fg); }
+  .mode-card.mc-js::before { background: var(--badge-js-fg); }
+  .mode-card.mc-stealth::before { background: var(--badge-stealth-fg); }
+  .mode-card-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .mode-card-desc { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
+  .mode-card-tech { font-size: 11px; color: var(--text-dim); margin-top: 10px; font-family: 'SF Mono', 'Cascadia Code', monospace; }
+
+  /* ── Annotation ── */
+  .annotation {
+    display: inline-block; background: #fffbeb; border: 1px solid #fde68a;
+    border-radius: 6px; padding: 8px 14px; font-size: 12px; color: #92400e;
+    margin-bottom: 16px;
+  }
+  .annotation strong { font-weight: 600; }
+
+  /* ── Comparison ── */
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .compare-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 10px; }
+  @media (max-width: 800px) { .compare { grid-template-columns: 1fr; } }
+
+  /* ── Select mockup with mode hints ── */
+  .select-options-preview {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    overflow: hidden; width: 100%; margin-top: 4px; box-shadow: 0 4px 12px rgba(0,0,0,.1);
+  }
+  .select-option {
+    padding: 8px 12px; font-size: 13px; display: flex; align-items: center; gap: 10px;
+    cursor: default; border-bottom: 1px solid var(--border-light);
+  }
+  .select-option:last-child { border-bottom: none; }
+  .select-option:hover { background: #f5f5f5; }
+  .select-option-hint { font-size: 11px; color: var(--text-dim); margin-left: auto; }
+</style>
+</head>
+<body>
+
+<div class="design-doc">
+
+<!-- ━━━ Title ━━━ -->
+<h1 class="design-title">OpenMonitor UI 改进设计稿</h1>
+<p class="design-subtitle">抓取模式（crawl_mode）功能的视觉方案 — auto / html / js / stealth</p>
+
+<!-- ━━━ 1. Color Palette ━━━ -->
+<div class="section">
+  <div class="section-label">1 / 模式配色方案</div>
+  <p class="section-desc">
+    四种抓取模式各有独立色系。auto 使用中性灰（默认态，不抢视觉），html 沿用蓝色系（与现有"检测中"一致，表示静态可靠），js 使用紫色（表示动态渲染的复杂度），stealth 使用橙色（表示高级/隐蔽操作）。
+  </p>
+  <div class="palette-grid">
+    <div class="swatch">
+      <div class="swatch-color" style="background: var(--badge-auto-bg);">
+        <span class="badge badge-auto"><span class="badge-dot"></span>AUTO</span>
+      </div>
+      <div class="swatch-info">
+        <div class="swatch-name">Auto — 自动</div>
+        <div class="swatch-value">bg #f3f4f6 · fg #6b7280</div>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background: var(--badge-html-bg);">
+        <span class="badge badge-html"><span class="badge-dot"></span>HTML</span>
+      </div>
+      <div class="swatch-info">
+        <div class="swatch-name">HTML — 静态抓取</div>
+        <div class="swatch-value">bg #dbeafe · fg #2563eb</div>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background: var(--badge-js-bg);">
+        <span class="badge badge-js"><span class="badge-dot"></span>JS</span>
+      </div>
+      <div class="swatch-info">
+        <div class="swatch-name">JS — 动态渲染</div>
+        <div class="swatch-value">bg #ede9fe · fg #7c3aed</div>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background: var(--badge-stealth-bg);">
+        <span class="badge badge-stealth"><span class="badge-dot"></span>STEALTH</span>
+      </div>
+      <div class="swatch-info">
+        <div class="swatch-name">Stealth — 隐蔽抓取</div>
+        <div class="swatch-value">bg #ffedd5 · fg #c2410c</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ━━━ 2. Badge Design ━━━ -->
+<div class="section">
+  <div class="section-label">2 / Badge 设计规范</div>
+  <p class="section-desc">
+    模式 badge 在现有 pill badge 基础上增加左侧圆点指示器，与 RSS 状态 badge 形成视觉区分。状态 badge 保持原样不变。
+  </p>
+
+  <div style="margin-bottom: 24px;">
+    <div class="badge-row">
+      <span class="badge-row-label">模式 badge</span>
+      <span class="badge badge-auto"><span class="badge-dot"></span>AUTO</span>
+      <span class="badge badge-html"><span class="badge-dot"></span>HTML</span>
+      <span class="badge badge-js"><span class="badge-dot"></span>JS</span>
+      <span class="badge badge-stealth"><span class="badge-dot"></span>STEALTH</span>
+    </div>
+    <div class="badge-row">
+      <span class="badge-row-label">状态 badge</span>
+      <span class="badge badge-rss">RSS</span>
+      <span class="badge badge-no_rss">无RSS</span>
+      <span class="badge badge-pending">待检测</span>
+    </div>
+  </div>
+
+  <div class="annotation">
+    <strong>设计决策：</strong>模式 badge 带圆点前缀，状态 badge 不带。两类 badge 在同一行出现时可快速区分语义。
+  </div>
+</div>
+
+<!-- ━━━ 3. Mode Cards ━━━ -->
+<div class="section">
+  <div class="section-label">3 / 四种模式说明</div>
+  <div class="mode-cards">
+    <div class="mode-card mc-auto">
+      <div class="mode-card-title"><span class="badge badge-auto"><span class="badge-dot"></span>AUTO</span> 自动模式</div>
+      <div class="mode-card-desc">默认模式。有 RSS 时走 RSS 抓取，无 RSS 时回退到 HTML 静态抓取。兼容现有所有站点，无需手动配置。</div>
+      <div class="mode-card-tech">crawl_rss() → crawl_html() fallback</div>
+    </div>
+    <div class="mode-card mc-html">
+      <div class="mode-card-title"><span class="badge badge-html"><span class="badge-dot"></span>HTML</span> 静态抓取</div>
+      <div class="mode-card-desc">使用 Scrapling Fetcher 抓取静态 HTML 页面。适用于服务端渲染的传统网站，速度快、资源消耗低。</div>
+      <div class="mode-card-tech">Fetcher.get() · 5 并发</div>
+    </div>
+    <div class="mode-card mc-js">
+      <div class="mode-card-title"><span class="badge badge-js"><span class="badge-dot"></span>JS</span> 动态渲染</div>
+      <div class="mode-card-desc">使用 Scrapling DynamicFetcher 启动无头浏览器渲染 JavaScript。适用于 SPA 或重度 JS 渲染的站点。</div>
+      <div class="mode-card-tech">DynamicFetcher.fetch() · 2 并发</div>
+    </div>
+    <div class="mode-card mc-stealth">
+      <div class="mode-card-title"><span class="badge badge-stealth"><span class="badge-dot"></span>STEALTH</span> 隐蔽抓取</div>
+      <div class="mode-card-desc">使用 Scrapling StealthyFetcher，具备反检测能力。适用于有 bot 防护的站点，资源消耗最高。</div>
+      <div class="mode-card-tech">StealthyFetcher.fetch() · 2 并发</div>
+    </div>
+  </div>
+</div>
+
+<!-- ━━━ 4. Table Mockup ━━━ -->
+<div class="section">
+  <div class="section-label">4 / 站点表格 — 新增"抓取模式"列</div>
+  <p class="section-desc">
+    在"状态"列之后插入"抓取模式"列。黄色高亮标注新增列位置。
+  </p>
+
+  <div class="mockup-frame">
+    <div class="mockup-chrome">
+      <div class="mockup-dot"></div><div class="mockup-dot"></div><div class="mockup-dot"></div>
+    </div>
+
+    <div class="mock-header">
+      <h1>OpenMonitor</h1>
+      <span style="font-size:12px;color:#999;">4 个网站</span>
+      <button class="btn btn-secondary">全部检测</button>
+      <button class="btn btn-secondary">全部抓取</button>
+      <select class="interval-select"><option>每6小时</option></select>
+      <button class="btn btn-primary">+ 添加网站</button>
+    </div>
+
+    <div class="mock-main">
+      <div class="card">
+        <table>
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th>URL</th>
+              <th>RSS 地址</th>
+              <th>状态</th>
+              <th class="new-col">抓取模式</th>
+              <th>最近条目数</th>
+              <th>上次抓取</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>新华网</td>
+              <td class="url-cell"><a href="#">https://www.xinhuanet.com</a></td>
+              <td class="url-cell"><a href="#">https://www.xinhuanet.com/rss</a></td>
+              <td><span class="badge badge-rss">RSS</span></td>
+              <td class="new-col"><span class="badge badge-auto"><span class="badge-dot"></span>AUTO</span></td>
+              <td class="dim">42</td>
+              <td class="dim">2026-04-17 10:30</td>
+              <td class="actions">
+                <button class="btn btn-secondary btn-sm">检测</button>
+                <button class="btn btn-secondary btn-sm">抓取</button>
+                <button class="btn btn-secondary btn-sm">历史</button>
+                <button class="btn btn-secondary btn-sm">编辑</button>
+                <button class="btn btn-danger btn-sm">删除</button>
+              </td>
+            </tr>
+            <tr>
+              <td>36氪</td>
+              <td class="url-cell"><a href="#">https://36kr.com</a></td>
+              <td class="url-cell"><span style="color:#ccc">—</span></td>
+              <td><span class="badge badge-no_rss">无RSS</span></td>
+              <td class="new-col"><span class="badge badge-html"><span class="badge-dot"></span>HTML</span></td>
+              <td class="dim">18</td>
+              <td class="dim">2026-04-17 10:30</td>
+              <td class="actions">
+                <button class="btn btn-secondary btn-sm">检测</button>
+                <button class="btn btn-secondary btn-sm">抓取</button>
+                <button class="btn btn-secondary btn-sm">历史</button>
+                <button class="btn btn-secondary btn-sm">编辑</button>
+                <button class="btn btn-danger btn-sm">删除</button>
+              </td>
+            </tr>
+            <tr>
+              <td>NewsNow</td>
+              <td class="url-cell"><a href="#">https://www.newsnow.com</a></td>
+              <td class="url-cell"><span style="color:#ccc">—</span></td>
+              <td><span class="badge badge-no_rss">无RSS</span></td>
+              <td class="new-col"><span class="badge badge-js"><span class="badge-dot"></span>JS</span></td>
+              <td class="dim">25</td>
+              <td class="dim">2026-04-17 10:32</td>
+              <td class="actions">
+                <button class="btn btn-secondary btn-sm">检测</button>
+                <button class="btn btn-secondary btn-sm">抓取</button>
+                <button class="btn btn-secondary btn-sm">历史</button>
+                <button class="btn btn-secondary btn-sm">编辑</button>
+                <button class="btn btn-danger btn-sm">删除</button>
+              </td>
+            </tr>
+            <tr>
+              <td>Bloomberg</td>
+              <td class="url-cell"><a href="#">https://www.bloomberg.com</a></td>
+              <td class="url-cell"><span style="color:#ccc">—</span></td>
+              <td><span class="badge badge-no_rss">无RSS</span></td>
+              <td class="new-col"><span class="badge badge-stealth"><span class="badge-dot"></span>STEALTH</span></td>
+              <td class="dim">12</td>
+              <td class="dim">2026-04-17 10:35</td>
+              <td class="actions">
+                <button class="btn btn-secondary btn-sm">检测</button>
+                <button class="btn btn-secondary btn-sm">抓取</button>
+                <button class="btn btn-secondary btn-sm">历史</button>
+                <button class="btn btn-secondary btn-sm">编辑</button>
+                <button class="btn btn-danger btn-sm">删除</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ━━━ 5. Modal Comparison ━━━ -->
+<div class="section">
+  <div class="section-label">5 / 添加/编辑弹窗 — 前后对比</div>
+  <p class="section-desc">
+    弹窗新增"抓取模式"下拉选择器，位于 URL 字段之后、备注字段之前。橙色虚线框标注新增区域。
+  </p>
+
+  <div class="compare">
+    <div>
+      <div class="compare-label">现有 — Before</div>
+      <div class="modal-mockup">
+        <h2>添加网站</h2>
+        <div class="field"><label>名称 *</label><input value="新华网" readonly></div>
+        <div class="field"><label>URL *</label><input value="https://www.xinhuanet.com" readonly></div>
+        <div class="field"><label>备注</label><textarea readonly placeholder="可选"></textarea></div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary">取消</button>
+          <button class="btn btn-primary">保存</button>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="compare-label">改进后 — After</div>
+      <div class="modal-mockup">
+        <h2>添加网站</h2>
+        <div class="field"><label>名称 *</label><input value="NewsNow" readonly></div>
+        <div class="field"><label>URL *</label><input value="https://www.newsnow.com" readonly></div>
+        <div class="field field-new" style="position:relative;">
+          <span class="field-new-tag">NEW</span>
+          <label>抓取模式</label>
+          <select>
+            <option selected>auto — 自动（默认）</option>
+            <option>html — 静态抓取</option>
+            <option>js — 动态渲染</option>
+            <option>stealth — 隐蔽抓取</option>
+          </select>
+        </div>
+        <div class="field"><label>备注</label><textarea readonly placeholder="可选"></textarea></div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary">取消</button>
+          <button class="btn btn-primary">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ━━━ 6. Select Dropdown Detail ━━━ -->
+<div class="section">
+  <div class="section-label">6 / 模式选择器下拉展开态</div>
+  <p class="section-desc">
+    下拉选项带右侧灰色提示文字，帮助用户理解每种模式的适用场景。
+  </p>
+
+  <div style="max-width: 420px;">
+    <div class="field">
+      <label style="display:block;font-size:12px;font-weight:500;color:#555;margin-bottom:5px;">抓取模式</label>
+      <div class="select-options-preview">
+        <div class="select-option" style="background:#f5f5f5;">
+          <span class="badge badge-auto" style="font-size:10px;padding:2px 8px;"><span class="badge-dot"></span>AUTO</span>
+          <span>自动</span>
+          <span class="select-option-hint">有RSS走RSS，否则HTML</span>
+        </div>
+        <div class="select-option">
+          <span class="badge badge-html" style="font-size:10px;padding:2px 8px;"><span class="badge-dot"></span>HTML</span>
+          <span>静态抓取</span>
+          <span class="select-option-hint">Scrapling Fetcher</span>
+        </div>
+        <div class="select-option">
+          <span class="badge badge-js" style="font-size:10px;padding:2px 8px;"><span class="badge-dot"></span>JS</span>
+          <span>动态渲染</span>
+          <span class="select-option-hint">无头浏览器，适合 SPA</span>
+        </div>
+        <div class="select-option">
+          <span class="badge badge-stealth" style="font-size:10px;padding:2px 8px;"><span class="badge-dot"></span>STEALTH</span>
+          <span>隐蔽抓取</span>
+          <span class="select-option-hint">反检测，资源消耗高</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ━━━ 7. CSS Spec ━━━ -->
+<div class="section">
+  <div class="section-label">7 / CSS 实现规范</div>
+  <p class="section-desc">以下是需要添加到 index.html 的新增样式，可直接复制使用。</p>
+
+  <div class="card" style="padding: 20px; font-family: 'SF Mono', 'Cascadia Code', monospace; font-size: 12px; line-height: 1.8; color: #374151; overflow-x: auto;">
+<pre style="margin:0;white-space:pre-wrap;">/* 抓取模式 badge */
+.badge-auto    { background: #f3f4f6; color: #6b7280; }
+.badge-html    { background: #dbeafe; color: #2563eb; }
+.badge-js      { background: #ede9fe; color: #7c3aed; }
+.badge-stealth { background: #ffedd5; color: #c2410c; }
+
+/* 模式选择器 */
+.field select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d4d4d4;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  background: #fff;
+  cursor: pointer;
+}
+.field select:focus { border-color: #1a1a1a; }</pre>
+  </div>
+</div>
+
+<!-- ━━━ 8. Data Flow ━━━ -->
+<div class="section">
+  <div class="section-label">8 / 数据流变更概览</div>
+  <p class="section-desc">crawl_mode 字段从前端表单 → API → sites.json → crawler 路由的完整流转。</p>
+
+  <div class="card" style="padding: 24px; font-size: 13px; line-height: 2;">
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
+      <span style="background:#1a1a1a;color:#fff;padding:4px 12px;border-radius:6px;font-size:12px;font-weight:500;">前端 select</span>
+      <span style="color:#999;">→</span>
+      <span style="background:#f3f4f6;padding:4px 12px;border-radius:6px;font-size:12px;">POST /api/sites</span>
+      <span style="color:#999;">→</span>
+      <span style="background:#f3f4f6;padding:4px 12px;border-radius:6px;font-size:12px;">sites.json<code style="color:#7c3aed;margin-left:4px;">crawl_mode: "js"</code></span>
+      <span style="color:#999;">→</span>
+      <span style="background:#f3f4f6;padding:4px 12px;border-radius:6px;font-size:12px;">crawl_site()</span>
+      <span style="color:#999;">→</span>
+      <span style="background:#ede9fe;color:#7c3aed;padding:4px 12px;border-radius:6px;font-size:12px;font-weight:500;">DynamicFetcher</span>
+    </div>
+    <div style="margin-top:16px;color:#999;font-size:12px;">
+      向后兼容：已有站点无 crawl_mode 字段时，读取默认为 "auto"，无需迁移数据。
+    </div>
+  </div>
+</div>
+
+<!-- ━━━ 9. Implementation Checklist ━━━ -->
+<div class="section">
+  <div class="section-label">9 / 实施清单</div>
+  <div class="card" style="padding: 20px; font-size: 13px;">
+    <table style="font-size:13px;">
+      <thead>
+        <tr>
+          <th style="width:40px;">#</th>
+          <th>文件</th>
+          <th>变更内容</th>
+          <th style="width:80px;">优先级</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="dim">1</td>
+          <td><code>crawler.py</code></td>
+          <td>新增 _extract_articles()、crawl_js()、crawl_stealth()；重写 crawl_html() 用 Scrapling；修改 crawl_site() 路由和 crawl_all() 并发策略</td>
+          <td><span class="badge" style="background:#fee2e2;color:#dc2626;">P0</span></td>
+        </tr>
+        <tr>
+          <td class="dim">2</td>
+          <td><code>app.py</code></td>
+          <td>add_site() 和 update_site() 接收并存储 crawl_mode 字段，默认 "auto"</td>
+          <td><span class="badge" style="background:#fef9c3;color:#a16207;">P1</span></td>
+        </tr>
+        <tr>
+          <td class="dim">3</td>
+          <td><code>templates/index.html</code></td>
+          <td>弹窗增加模式选择器、表格增加模式列、新增 badge 样式、STATUS_LABEL 映射</td>
+          <td><span class="badge" style="background:#fef9c3;color:#a16207;">P1</span></td>
+        </tr>
+        <tr>
+          <td class="dim">4</td>
+          <td><code>sites.json</code></td>
+          <td>无需迁移，读取时缺失字段默认 "auto"</td>
+          <td><span class="badge" style="background:#dcfce7;color:#16a34a;">P2</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

@@ -1,6 +1,8 @@
 {
   "crawl_interval_hours": 6,
   "data_dir": "",
+  "max_items": 200,
+  "max_article_age_days": 0,
   "ai": {
     "api_url": "https://api.deepseek.com/v1",
     "api_key": "your-api-key-here",

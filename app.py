@@ -36,6 +36,18 @@ crawl_state = {
 }
 crawl_lock = threading.Lock()
 
+# AI 分析状态
+analyze_state = {
+    'running': False,
+    'site_id': None,
+    'site_name': '',
+    'step': '',
+    'message': '',
+    'error': None,
+    'result': None,
+}
+analyze_lock = threading.Lock()
+
 
 def load_config() -> dict:
     if not CONFIG_FILE.exists():
@@ -59,9 +71,40 @@ def get_data_dir() -> Path:
     return Path(raw) if raw else _DEFAULT_DATA_DIR
 
 
+def _load_previous_urls(site_id: str, data_dir: Path) -> set[str]:
+    if not data_dir.exists():
+        return set()
+    candidates: list[tuple[str, Path]] = []
+    for f in data_dir.glob(f'*_{site_id}.json'):
+        candidates.append((f.name, f))
+    for f in data_dir.glob('*_all.json'):
+        candidates.append((f.name, f))
+    if not candidates:
+        return set()
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    _, filepath = candidates[0]
+    try:
+        with open(filepath, 'r', encoding='utf-8') as fp:
+            data = json.load(fp)
+    except Exception:
+        return set()
+    if filepath.name.endswith('_all.json'):
+        for site_data in data.get('sites', []):
+            if site_data.get('site_id') == site_id:
+                return {item['url'] for item in site_data.get('items', [])}
+        return set()
+    return {item['url'] for item in data.get('items', [])}
+
+
 def run_crawl_all():
     global crawl_state
     sites = load_sites()
+    cfg = load_config()
+    global_max = cfg.get('max_items', 200)
+    global_age = cfg.get('max_article_age_days', 0)
+    for s in sites:
+        s.setdefault('max_items', global_max)
+        s.setdefault('max_article_age_days', global_age)
     data_dir = get_data_dir()
     with crawl_lock:
         crawl_state = {
@@ -71,7 +114,8 @@ def run_crawl_all():
             'current': '',
             'last_run': crawl_state.get('last_run'),
         }
-    _crawl_all(sites, data_dir)
+    _crawl_all(sites, data_dir,
+               prev_urls_loader=lambda sid: _load_previous_urls(sid, data_dir))
     with crawl_lock:
         crawl_state['running'] = False
         crawl_state['done'] = len(sites)
@@ -137,7 +181,9 @@ def add_site():
         crawl_mode = 'auto'
 
     sites = load_sites()
+    next_seq = max((s.get('seq', 0) for s in sites), default=0) + 1
     site = {
+        'seq': next_seq,
         'id': str(uuid.uuid4()),
         'name': data['name'].strip(),
         'url': _normalize_url(data['url'].strip()),
@@ -329,9 +375,17 @@ def crawl_one_route(site_id):
     site = next((s for s in sites if s['id'] == site_id), None)
     if not site:
         return jsonify({'error': '未找到'}), 404
+    cfg = load_config()
+    site.setdefault('max_items', cfg.get('max_items', 200))
+    site.setdefault('max_article_age_days', cfg.get('max_article_age_days', 0))
     result = _crawl_site(site)
+    data_dir = get_data_dir()
+    if result and result.get('items'):
+        prev_urls = _load_previous_urls(site['id'], data_dir)
+        if prev_urls:
+            result['items'] = [i for i in result['items'] if i['url'] not in prev_urls]
+            result['count'] = len(result['items'])
     if result:
-        data_dir = get_data_dir()
         data_dir.mkdir(parents=True, exist_ok=True)
         crawled_at = datetime.now().isoformat(timespec='seconds')
         ts = crawled_at.replace(':', '-').replace('T', '_')
@@ -364,6 +418,8 @@ def update_config():
             except Exception:
                 return jsonify({'error': '路径无效或无权限'}), 400
         cfg['data_dir'] = raw
+    if 'max_article_age_days' in data:
+        cfg['max_article_age_days'] = int(data['max_article_age_days'])
     save_config(cfg)
     return jsonify(cfg)
 
@@ -403,8 +459,74 @@ def get_result_file(site_id, filename):
 
 # ── AI 分析相关 ──────────────────────────────────────────
 
+_ANALYZE_STEPS = {
+    'fetching_page': '正在抓取网页...',
+    'stripping_html': '正在进行网页噪音过滤...',
+    'calling_ai': '正在调用AI进行网页结构分析...',
+    'parsing_result': '正在解析AI返回结果...',
+    'saving': '分析成功，正在保存抓取配置...',
+    'done': 'AI分析完成',
+}
+
+
+def _run_analyze(site_id: str, site_url: str, site_name: str, ai_config: dict):
+    global analyze_state
+    try:
+        with analyze_lock:
+            analyze_state.update(
+                running=True, site_id=site_id, site_name=site_name,
+                step='fetching_page', message=_ANALYZE_STEPS['fetching_page'],
+                error=None, result=None,
+            )
+
+        from scrapling import Fetcher
+        page = Fetcher.get(site_url, timeout=30)
+        html = page.body.decode('utf-8', errors='ignore') if isinstance(page.body, bytes) else page.body
+
+        def _progress(step):
+            with analyze_lock:
+                analyze_state['step'] = step
+                analyze_state['message'] = _ANALYZE_STEPS.get(step, step)
+
+        selectors = _analyze_page(html, site_url, ai_config, progress_cb=_progress)
+
+        with analyze_lock:
+            analyze_state['step'] = 'saving'
+            analyze_state['message'] = _ANALYZE_STEPS['saving']
+
+        sites = load_sites()
+        for s in sites:
+            if s['id'] == site_id:
+                s['selectors'] = selectors
+                break
+        save_sites(sites)
+
+        from crawler import _extract_articles
+        preview = _extract_articles(page, site_url, selectors)
+
+        with analyze_lock:
+            analyze_state.update(
+                running=False, step='done', message=_ANALYZE_STEPS['done'],
+                result={
+                    'selectors': selectors,
+                    'preview': preview[:10],
+                    'preview_count': len(preview),
+                },
+            )
+    except Exception as e:
+        with analyze_lock:
+            analyze_state.update(
+                running=False, step='error',
+                message=f'AI分析失败: {e}', error=str(e), result=None,
+            )
+
+
 @app.route('/api/sites/<site_id>/analyze', methods=['POST'])
 def analyze_site(site_id):
+    with analyze_lock:
+        if analyze_state['running']:
+            return jsonify({'error': 'AI分析正在进行中'}), 409
+
     sites = load_sites()
     site = next((s for s in sites if s['id'] == site_id), None)
     if not site:
@@ -415,31 +537,40 @@ def analyze_site(site_id):
     if not ai.get('api_url') or not ai.get('api_key') or not ai.get('model'):
         return jsonify({'error': '请先在 config.json 中配置 ai 字段（api_url、api_key、model）'}), 400
 
-    from scrapling import Fetcher
-    try:
-        page = Fetcher.get(site['url'], timeout=30)
-        html = page.body.decode('utf-8', errors='ignore') if isinstance(page.body, bytes) else page.body
-    except Exception as e:
-        return jsonify({'error': f'抓取页面失败: {e}'}), 500
+    t = threading.Thread(
+        target=_run_analyze,
+        args=(site_id, site['url'], site['name'], ai),
+        daemon=True,
+    )
+    t.start()
+    return jsonify({'ok': True})
 
-    try:
-        selectors = _analyze_page(html, site['url'], ai)
-    except Exception as e:
-        return jsonify({'error': f'AI 分析失败: {e}'}), 500
 
-    for s in sites:
-        if s['id'] == site_id:
-            s['selectors'] = selectors
-            break
-    save_sites(sites)
+@app.route('/api/analyze/status', methods=['GET'])
+def analyze_status():
+    with analyze_lock:
+        return jsonify(dict(analyze_state))
 
-    from crawler import _extract_articles
-    preview = _extract_articles(page, site['url'], selectors)
 
+@app.route('/api/analyze/result', methods=['GET'])
+def analyze_result():
+    with analyze_lock:
+        result = analyze_state.get('result')
+        if result:
+            analyze_state['result'] = None
+        return jsonify(result if result else {'error': '无结果'})
+
+
+@app.route('/api/system/status', methods=['GET'])
+def system_status():
+    cfg = load_config()
+    hours = cfg.get('crawl_interval_hours', 6)
+    with crawl_lock:
+        last_run = crawl_state.get('last_run')
     return jsonify({
-        'selectors': selectors,
-        'preview': preview[:10],
-        'preview_count': len(preview),
+        'scheduler_on': True,
+        'interval_hours': hours,
+        'last_run': last_run,
     })
 
 

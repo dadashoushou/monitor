@@ -34,11 +34,14 @@
   .url-cell a { color: #2563eb; text-decoration: none; }
   .url-cell a:hover { text-decoration: underline; }
   .actions { display: flex; gap: 6px; white-space: nowrap; }
-  .progress-bar { height: 3px; background: #e5e5e5; border-radius: 2px; overflow: hidden; margin-bottom: 16px; display: none; }
-  .progress-bar.active { display: block; }
-  .progress-fill { height: 100%; background: #1a1a1a; transition: width .3s; }
-  .progress-text { font-size: 12px; color: #666; margin-bottom: 8px; display: none; }
-  .progress-text.active { display: block; }
+  .status-bar { background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 8px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; font-size: 13px; color: #555; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; flex-shrink: 0; }
+  .status-dot.busy { background: #3b82f6; animation: pulse 1.2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+  .status-text { flex: 1; }
+  .status-progress { height: 3px; background: #e5e5e5; border-radius: 2px; overflow: hidden; width: 140px; display: none; }
+  .status-progress.active { display: block; }
+  .status-fill { height: 100%; background: #1a1a1a; transition: width .3s; }
   /* Modal */
   .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none; align-items: center; justify-content: center; z-index: 100; }
   .overlay.open { display: flex; }
@@ -101,18 +104,30 @@
     <option value="12">每12小时</option>
     <option value="24">每24小时</option>
   </select>
+  <select class="interval-select" id="ageSelect" title="文章时效过滤">
+    <option value="0">不过滤</option>
+    <option value="1">仅1天内</option>
+    <option value="2">仅2天内</option>
+    <option value="3">仅3天内</option>
+    <option value="5">仅5天内</option>
+    <option value="7">仅7天内</option>
+  </select>
   <input id="dataDirInput" class="data-dir-input" type="text" placeholder="数据目录（绝对路径，空=默认）" title="抓取结果 JSON 文件保存目录">
   <button class="btn btn-secondary" id="btnSaveDataDir">保存路径</button>
   <button class="btn btn-primary" onclick="openModal()">+ 添加网站</button>
 </div>
 
 <div class="main">
-  <div class="progress-text" id="progressText"></div>
-  <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+  <div class="status-bar" id="statusBar">
+    <span class="status-dot" id="statusDot"></span>
+    <span class="status-text" id="statusText">就绪</span>
+    <div class="status-progress" id="statusProgress"><div class="status-fill" id="statusFill"></div></div>
+  </div>
   <div class="card">
     <table id="siteTable">
       <thead>
         <tr>
+          <th>序号</th>
           <th>名称</th>
           <th>URL</th>
           <th>RSS 地址</th>
@@ -168,6 +183,30 @@
 let editingId = null;
 let pollTimer = null;
 let crawlPollTimer = null;
+let analyzePollTimer = null;
+
+function updateStatusBar(text, progress) {
+  document.getElementById('statusText').textContent = text;
+  const dot = document.getElementById('statusDot');
+  const prog = document.getElementById('statusProgress');
+  const fill = document.getElementById('statusFill');
+  if (progress != null) {
+    dot.classList.add('busy');
+    prog.classList.add('active');
+    fill.style.width = progress + '%';
+  } else if (text.includes('完成') || text.includes('就绪') || text.includes('已开启')) {
+    dot.classList.remove('busy');
+    prog.classList.remove('active');
+  } else {
+    dot.classList.add('busy');
+    prog.classList.remove('active');
+  }
+}
+
+function showIdleStatus() {
+  const interval = document.getElementById('intervalSelect').value;
+  updateStatusBar('定时抓取已开启 · 间隔 ' + interval + ' 小时', null);
+}
 
 async function loadSitesWithCrawlInfo() {
   const res = await fetch('/api/sites');
@@ -197,9 +236,14 @@ async function crawlOne(id) {
 
 function startCrawlPolling() {
   if (crawlPollTimer) return;
+  updateStatusBar('抓取中...', 0);
   crawlPollTimer = setInterval(async () => {
     const res = await fetch('/api/crawl/status');
     const s = await res.json();
+    if (s.total > 0) {
+      const pct = Math.round(s.done / s.total * 100);
+      updateStatusBar('抓取中 ' + s.done + '/' + s.total + (s.current ? '：' + s.current : ''), pct);
+    }
     if (!s.running) {
       clearInterval(crawlPollTimer);
       crawlPollTimer = null;
@@ -207,6 +251,7 @@ function startCrawlPolling() {
       btn.disabled = false;
       btn.textContent = '全部抓取';
       loadSitesWithCrawlInfo();
+      showIdleStatus();
     }
   }, 1500);
 }
@@ -268,6 +313,15 @@ async function initIntervalSelect() {
     });
   });
   document.getElementById('dataDirInput').value = cfg.data_dir || '';
+  const ageSel = document.getElementById('ageSelect');
+  ageSel.value = String(cfg.max_article_age_days || 0);
+  ageSel.addEventListener('change', async () => {
+    await fetch('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ max_article_age_days: parseInt(ageSel.value) })
+    });
+  });
 }
 
 const STATUS_LABEL = {
@@ -296,13 +350,14 @@ async function loadSites() {
 function renderTable(sites) {
   const tbody = document.getElementById('tbody');
   if (sites.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="9"><div class="empty">还没有网站，点击右上角添加</div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10"><div class="empty">还没有网站，点击右上角添加</div></td></tr>';
     return;
   }
   tbody.innerHTML = sites.map(s => {
     const mode = s.crawl_mode || 'auto';
     return `
     <tr id="row-${s.id}">
+      <td style="color:#999;font-size:12px;text-align:center">${s.seq || '—'}</td>
       <td>${esc(s.name)}</td>
       <td class="url-cell"><a href="${esc(s.url)}" target="_blank">${esc(s.url)}</a></td>
       <td class="url-cell">${s.rss_url ? `<a href="${esc(s.rss_url)}" target="_blank">${esc(s.rss_url)}</a>` : '<span style="color:#ccc">—</span>'}</td>
@@ -418,18 +473,14 @@ function startPolling() {
     const res = await fetch('/api/check/status');
     const s = await res.json();
     const pct = s.total > 0 ? Math.round(s.done / s.total * 100) : 0;
-    document.getElementById('progressBar').classList.toggle('active', s.running);
-    document.getElementById('progressText').classList.toggle('active', s.running);
-    document.getElementById('progressFill').style.width = pct + '%';
-    document.getElementById('progressText').textContent = `检测中 ${s.done}/${s.total}：${s.current}`;
+    updateStatusBar('检测中 ' + s.done + '/' + s.total + '：' + s.current, pct);
     loadSites();
     if (!s.running) {
       clearInterval(pollTimer);
       pollTimer = null;
       document.getElementById('btnCheckAll').disabled = false;
       document.getElementById('btnCheckAll').textContent = '全部检测';
-      document.getElementById('progressBar').classList.remove('active');
-      document.getElementById('progressText').classList.remove('active');
+      showIdleStatus();
     }
   }, 1500);
 }
@@ -482,14 +533,17 @@ async function analyzeSiteById(id) {
   const btn = Array.from(row.querySelectorAll('button')).find(b => b.textContent === 'AI分析');
   if (btn) { btn.disabled = true; btn.textContent = '分析中…'; }
   await _doAnalyze(id);
-  if (btn) { btn.disabled = false; btn.textContent = 'AI分析'; }
-  loadSitesWithCrawlInfo();
 }
+
+let _analyzeSourceId = null;
+let _analyzeFromModal = false;
 
 async function _doAnalyze(siteId) {
   const preview = document.getElementById('selectorsPreview');
   const btnModal = document.getElementById('btnAnalyze');
-  if (btnModal && document.getElementById('overlay').classList.contains('open')) {
+  _analyzeFromModal = document.getElementById('overlay').classList.contains('open');
+  _analyzeSourceId = siteId;
+  if (_analyzeFromModal && btnModal) {
     btnModal.disabled = true;
     btnModal.textContent = '分析中…';
   }
@@ -498,26 +552,71 @@ async function _doAnalyze(siteId) {
     const data = await res.json();
     if (!res.ok) {
       alert(data.error || '分析失败');
+      _restoreAnalyzeButtons();
       return;
     }
-    if (preview && document.getElementById('overlay').classList.contains('open')) {
-      let text = JSON.stringify(data.selectors, null, 2);
-      text += '\n\n预览: ' + data.preview_count + ' 条';
-      if (data.preview && data.preview.length > 0) {
-        text += '\n' + data.preview.map(p => '  ' + p.title + (p.published ? ' [' + p.published + ']' : '')).join('\n');
-      }
-      preview.textContent = text;
-      preview.classList.add('active');
-    }
+    startAnalyzePolling();
   } catch(e) {
     alert('请求失败: ' + e.message);
-  } finally {
-    if (btnModal) { btnModal.disabled = false; btnModal.textContent = 'AI 分析'; }
+    _restoreAnalyzeButtons();
   }
+}
+
+function _restoreAnalyzeButtons() {
+  const btnModal = document.getElementById('btnAnalyze');
+  if (btnModal) { btnModal.disabled = false; btnModal.textContent = 'AI 分析'; }
+  if (_analyzeSourceId) {
+    const row = document.getElementById('row-' + _analyzeSourceId);
+    if (row) {
+      const btn = Array.from(row.querySelectorAll('button')).find(b => b.textContent === '分析中…');
+      if (btn) { btn.disabled = false; btn.textContent = 'AI分析'; }
+    }
+  }
+  _analyzeSourceId = null;
+  _analyzeFromModal = false;
+}
+
+function startAnalyzePolling() {
+  if (analyzePollTimer) return;
+  analyzePollTimer = setInterval(async () => {
+    const res = await fetch('/api/analyze/status');
+    const s = await res.json();
+    if (s.running) {
+      updateStatusBar(s.message, null);
+      return;
+    }
+    clearInterval(analyzePollTimer);
+    analyzePollTimer = null;
+    if (s.step === 'done') {
+      updateStatusBar('AI分析完成', null);
+      const rr = await fetch('/api/analyze/result');
+      const result = await rr.json();
+      if (result && result.selectors) {
+        const preview = document.getElementById('selectorsPreview');
+        if (_analyzeFromModal && preview && document.getElementById('overlay').classList.contains('open')) {
+          let text = JSON.stringify(result.selectors, null, 2);
+          text += '\n\n预览: ' + result.preview_count + ' 条';
+          if (result.preview && result.preview.length > 0) {
+            text += '\n' + result.preview.map(p => '  ' + p.title + (p.published ? ' [' + p.published + ']' : '')).join('\n');
+          }
+          preview.textContent = text;
+          preview.classList.add('active');
+        }
+      }
+      _restoreAnalyzeButtons();
+      loadSitesWithCrawlInfo();
+      setTimeout(showIdleStatus, 3000);
+    } else if (s.step === 'error') {
+      updateStatusBar(s.message, null);
+      _restoreAnalyzeButtons();
+      setTimeout(showIdleStatus, 5000);
+    }
+  }, 1500);
 }
 
 loadSitesWithCrawlInfo();
 initIntervalSelect();
+showIdleStatus();
 </script>
 </body>
 </html>

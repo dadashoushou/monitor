@@ -3,7 +3,7 @@
 """
 import re
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urljoin
@@ -13,6 +13,33 @@ from scrapling import Fetcher, DynamicFetcher, StealthyFetcher
 
 DATE_PATTERN = re.compile(r'\d{4}[-/_]\d{2}')
 ARTICLE_PATTERN = re.compile(r'/article/')
+
+_PUBLISHED_FORMATS = ('%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d')
+
+
+def _parse_published(pub: str) -> datetime | None:
+    for fmt in _PUBLISHED_FORMATS:
+        try:
+            return datetime.strptime(pub, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _filter_by_age(items: list[dict], max_age_days: int) -> list[dict]:
+    if max_age_days <= 0:
+        return items
+    cutoff = datetime.now() - timedelta(days=max_age_days)
+    result = []
+    for item in items:
+        pub = item.get('published') or item.get('crawled_at') or ''
+        if not pub:
+            result.append(item)
+            continue
+        dt = _parse_published(pub)
+        if dt is None or dt >= cutoff:
+            result.append(item)
+    return result
 
 
 def _extract_time_from_url(href: str, pattern: re.Pattern) -> str:
@@ -29,14 +56,16 @@ def _extract_time_from_url(href: str, pattern: re.Pattern) -> str:
     return ''
 
 
-def _extract_articles(page, site_url: str, selectors: dict = None) -> list[dict]:
-    """从 Scrapling Response 中提取文章链接列表，最多 30 条。
+def _extract_articles(page, site_url: str, selectors: dict = None,
+                      max_items: int = 200) -> list[dict]:
+    """从 Scrapling Response 中提取文章链接列表。
     如果提供 selectors 则使用 AI 生成的规则，否则走硬编码逻辑。
     """
     if selectors and selectors.get('css_selector'):
-        return _extract_with_selectors(page, site_url, selectors)
+        return _extract_with_selectors(page, site_url, selectors, max_items)
 
     items = []
+    seen_urls: set[str] = set()
     for el in page.css('a[href]'):
         text = el.text.strip() if el.text else ''
         href = el.attrib.get('href', '')
@@ -46,13 +75,18 @@ def _extract_articles(page, site_url: str, selectors: dict = None) -> list[dict]
             continue
         if not href.startswith('http'):
             href = urljoin(site_url, href)
-        items.append({'title': text, 'url': href, 'published': ''})
-        if len(items) >= 30:
+        if href in seen_urls:
+            continue
+        seen_urls.add(href)
+        items.append({'title': text, 'url': href, 'published': None,
+                      'crawled_at': datetime.now().isoformat(timespec='seconds')})
+        if len(items) >= max_items:
             break
     return items
 
 
-def _extract_with_selectors(page, site_url: str, selectors: dict) -> list[dict]:
+def _extract_with_selectors(page, site_url: str, selectors: dict,
+                            max_items: int = 200) -> list[dict]:
     """使用 AI 生成的 selectors 规则提取文章列表"""
     css = selectors['css_selector']
     url_pat = re.compile(selectors['url_pattern']) if selectors.get('url_pattern') else None
@@ -67,6 +101,7 @@ def _extract_with_selectors(page, site_url: str, selectors: dict) -> list[dict]:
     time_css = selectors.get('time_css') if time_source == 'time_css' else None
 
     items = []
+    seen_urls: set[str] = set()
     for el in page.css(css):
         if title_attr:
             text = (el.attrib.get(title_attr, '') or '').strip()
@@ -80,22 +115,26 @@ def _extract_with_selectors(page, site_url: str, selectors: dict) -> list[dict]:
             continue
         if not href.startswith('http'):
             href = urljoin(site_url, href)
+        if href in seen_urls:
+            continue
+        seen_urls.add(href)
 
-        published = ''
+        published = None
         if time_url_pat:
-            published = _extract_time_from_url(href, time_url_pat)
+            published = _extract_time_from_url(href, time_url_pat) or None
         elif time_css:
             try:
                 parent = el.parent
                 if parent:
                     time_els = parent.css(time_css)
                     if time_els:
-                        published = (time_els[0].text or '').strip()
+                        published = (time_els[0].text or '').strip() or None
             except Exception:
                 pass
 
-        items.append({'title': text, 'url': href, 'published': published})
-        if len(items) >= 30:
+        items.append({'title': text, 'url': href, 'published': published,
+                      'crawled_at': datetime.now().isoformat(timespec='seconds')})
+        if len(items) >= max_items:
             break
     return items
 
@@ -103,11 +142,11 @@ def _extract_with_selectors(page, site_url: str, selectors: dict) -> list[dict]:
 def _parsed_time_to_iso(t) -> str:
     """将 feedparser 的 time.struct_time 转为 ISO 字符串，失败返回空字符串"""
     if not t:
-        return ''
+        return None
     try:
         return datetime(*t[:6]).isoformat(timespec='seconds')
     except Exception:
-        return ''
+        return None
 
 
 def crawl_rss(site: dict) -> list[dict]:
@@ -123,6 +162,7 @@ def crawl_rss(site: dict) -> list[dict]:
             'title': entry.get('title', ''),
             'url': entry.get('link', ''),
             'published': published,
+            'crawled_at': datetime.now().isoformat(timespec='seconds'),
         })
     return items
 
@@ -133,7 +173,8 @@ def crawl_html(site: dict) -> list[dict]:
         page = Fetcher.get(site['url'], timeout=10)
     except Exception:
         return []
-    return _extract_articles(page, site['url'], site.get('selectors'))
+    max_items = site.get('max_items', 200)
+    return _extract_articles(page, site['url'], site.get('selectors'), max_items)
 
 
 def crawl_js(site: dict) -> list[dict]:
@@ -145,7 +186,8 @@ def crawl_js(site: dict) -> list[dict]:
         )
     except Exception:
         return []
-    return _extract_articles(page, site['url'], site.get('selectors'))
+    max_items = site.get('max_items', 200)
+    return _extract_articles(page, site['url'], site.get('selectors'), max_items)
 
 
 def crawl_stealth(site: dict) -> list[dict]:
@@ -157,7 +199,8 @@ def crawl_stealth(site: dict) -> list[dict]:
         )
     except Exception:
         return []
-    return _extract_articles(page, site['url'], site.get('selectors'))
+    max_items = site.get('max_items', 200)
+    return _extract_articles(page, site['url'], site.get('selectors'), max_items)
 
 
 def crawl_site(site: dict) -> dict | None:
@@ -187,6 +230,13 @@ def crawl_site(site: dict) -> dict | None:
     if not items:
         return None
 
+    max_age_days = site.get('max_article_age_days', 0)
+    if max_age_days > 0:
+        items = _filter_by_age(items, max_age_days)
+
+    if not items:
+        return None
+
     return {
         'site_id': site['id'],
         'site_name': site['name'],
@@ -197,7 +247,8 @@ def crawl_site(site: dict) -> dict | None:
     }
 
 
-def crawl_all(sites: list[dict], data_dir: Path) -> list[dict]:
+def crawl_all(sites: list[dict], data_dir: Path,
+              prev_urls_loader=None) -> list[dict]:
     """按模式分组并发抓取：静态(rss/html/auto) max_workers=5，动态(js/stealth) max_workers=2"""
     static_sites = []
     dynamic_sites = []
@@ -225,6 +276,13 @@ def crawl_all(sites: list[dict], data_dir: Path) -> list[dict]:
 
     _collect(static_sites, 5)
     _collect(dynamic_sites, 2)
+
+    if prev_urls_loader:
+        for result in results:
+            prev_urls = prev_urls_loader(result['site_id'])
+            if prev_urls:
+                result['items'] = [i for i in result['items'] if i['url'] not in prev_urls]
+                result['count'] = len(result['items'])
 
     if results:
         data_dir.mkdir(parents=True, exist_ok=True)

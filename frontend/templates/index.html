@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenMonitor 阅读器</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f6fa; color: #333; font-size: 14px; }
+
+/* 顶部状态栏 */
+.status-bar {
+  background: #fff; border-bottom: 1px solid #e2e8f0; padding: 10px 24px;
+  display: flex; align-items: center; gap: 20px; font-size: 13px; color: #666;
+  position: sticky; top: 0; z-index: 100;
+}
+.status-bar .status-item { display: flex; align-items: center; gap: 6px; }
+.status-bar .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #48bb78; flex-shrink: 0; }
+.status-bar .status-dot.scanning { background: #4299e1; animation: pulse 1.5s infinite; }
+.status-bar .status-label { color: #999; }
+.status-bar .status-value { color: #333; font-weight: 500; }
+.status-bar .spacer { flex: 1; }
+.status-bar .config-btn {
+  background: none; border: 1px solid #e2e8f0; border-radius: 6px;
+  padding: 4px 12px; cursor: pointer; font-size: 12px; color: #666;
+}
+.status-bar .config-btn:hover { background: #f7fafc; border-color: #cbd5e0; }
+
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* 导航切换 */
+.nav-tabs {
+  display: flex; gap: 0; padding: 16px 24px 0; background: #fff;
+}
+.nav-tab {
+  padding: 8px 20px; cursor: pointer; border: 1px solid #e2e8f0;
+  border-bottom: none; border-radius: 8px 8px 0 0; background: #f7fafc;
+  font-size: 13px; color: #666; position: relative; top: 1px;
+}
+.nav-tab.active { background: #fff; color: #333; font-weight: 500; border-bottom: 1px solid #fff; }
+.nav-tab .badge-count {
+  background: #e2e8f0; color: #666; border-radius: 10px;
+  padding: 1px 7px; font-size: 11px; margin-left: 6px;
+}
+.nav-tab.active .badge-count { background: #4299e1; color: #fff; }
+
+/* 主内容 */
+.main { padding: 0 24px 24px; background: #fff; min-height: calc(100vh - 100px); border-top: 1px solid #e2e8f0; }
+
+/* 表格 */
+table { width: 100%; border-collapse: collapse; }
+thead th {
+  text-align: left; padding: 12px 10px; border-bottom: 2px solid #e2e8f0;
+  font-size: 12px; color: #999; font-weight: 500; text-transform: uppercase;
+  white-space: nowrap;
+}
+tbody td { padding: 10px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+tbody tr:hover { background: #f7fafc; }
+.col-check { width: 36px; text-align: center; }
+.col-check input { cursor: pointer; width: 15px; height: 15px; }
+.col-seq { width: 50px; text-align: center; color: #999; }
+.col-title a { color: #2b6cb0; text-decoration: none; }
+.col-title a:hover { text-decoration: underline; }
+.col-time { white-space: nowrap; color: #888; font-size: 12px; }
+.col-source { color: #666; font-size: 12px; }
+.col-action { width: 70px; text-align: center; }
+
+.btn-del, .btn-restore {
+  border: none; border-radius: 4px; padding: 4px 10px;
+  cursor: pointer; font-size: 12px;
+}
+.btn-del { background: #fed7d7; color: #c53030; }
+.btn-del:hover { background: #feb2b2; }
+.btn-restore { background: #c6f6d5; color: #276749; }
+.btn-restore:hover { background: #9ae6b4; }
+
+.empty-msg { text-align: center; padding: 60px 0; color: #999; }
+
+/* 分页 */
+.pagination {
+  display: flex; justify-content: center; align-items: center; gap: 8px;
+  padding: 16px 0; font-size: 13px;
+}
+.pagination button {
+  border: 1px solid #e2e8f0; background: #fff; border-radius: 6px;
+  padding: 6px 14px; cursor: pointer; font-size: 13px;
+}
+.pagination button:hover { background: #f7fafc; }
+.pagination button:disabled { opacity: 0.4; cursor: default; }
+.pagination .page-info { color: #666; }
+
+/* PLACEHOLDER_MODAL_CSS */
+
+.batch-bar {
+  display: none; padding: 8px 0; align-items: center; gap: 10px; font-size: 13px;
+  flex-wrap: wrap;
+}
+.batch-bar.show { display: flex; }
+.batch-bar label { cursor: pointer; white-space: nowrap; }
+.batch-bar .selected-count { color: #666; }
+.btn-batch-del, .btn-batch-restore {
+  border: none; border-radius: 4px; padding: 5px 14px; cursor: pointer; font-size: 12px;
+}
+.btn-batch-del { background: #c53030; color: #fff; }
+.btn-batch-del:hover { background: #9b2c2c; }
+.btn-batch-restore { background: #276749; color: #fff; }
+.btn-batch-restore:hover { background: #1a4731; }
+.search-box {
+  margin-left: auto; display: flex; align-items: center; gap: 6px;
+}
+.search-box input {
+  border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 10px;
+  font-size: 13px; width: 200px;
+}
+.search-box button {
+  border: 1px solid #e2e8f0; background: #fff; border-radius: 6px;
+  padding: 4px 12px; cursor: pointer; font-size: 12px;
+}
+.search-box button:hover { background: #f7fafc; }
+
+/* 设置弹窗 */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.3);
+  z-index: 200; justify-content: center; align-items: center;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: #fff; border-radius: 12px; padding: 24px; width: 480px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+}
+.modal h3 { margin-bottom: 16px; font-size: 16px; }
+.modal label { display: block; margin-bottom: 4px; font-size: 13px; color: #666; }
+.modal input {
+  width: 100%; padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 6px;
+  font-size: 14px; margin-bottom: 16px;
+}
+.modal .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.modal .btn-save {
+  background: #4299e1; color: #fff; border: none; border-radius: 6px;
+  padding: 8px 20px; cursor: pointer; font-size: 13px;
+}
+.modal .btn-save:hover { background: #3182ce; }
+.modal .btn-cancel {
+  background: #e2e8f0; color: #333; border: none; border-radius: 6px;
+  padding: 8px 20px; cursor: pointer; font-size: 13px;
+}
+</style>
+</head>
+<body>
+
+<!-- 状态栏 -->
+<div class="status-bar">
+  <div class="status-item">
+    <span class="status-dot" id="statusDot"></span>
+    <span class="status-label">更新时间:</span>
+    <span class="status-value" id="lastScan">—</span>
+  </div>
+  <div class="status-item">
+    <span class="status-label">最新读取:</span>
+    <span class="status-value" id="lastNewCount">0</span>
+    <span class="status-label">条</span>
+  </div>
+  <div class="status-item">
+    <span class="status-label">总计:</span>
+    <span class="status-value" id="totalArticles">0</span>
+    <span class="status-label">条</span>
+  </div>
+  <div class="spacer"></div>
+  <div class="status-item">
+    <span class="status-label" id="dataDirDisplay" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+  </div>
+  <button class="config-btn" id="scanBtn" onclick="manualScan()">立即扫描</button>
+  <button class="config-btn" onclick="openConfig()">设置</button>
+</div>
+
+<!-- 导航 -->
+<div class="nav-tabs">
+  <div class="nav-tab active" id="tabArticles" onclick="switchTab('articles')">
+    文章列表 <span class="badge-count" id="articleCount">0</span>
+  </div>
+  <div class="nav-tab" id="tabTrash" onclick="switchTab('trash')">
+    回收站 <span class="badge-count" id="trashCount">0</span>
+  </div>
+</div>
+
+<!-- 主内容 -->
+<div class="main">
+  <!-- 文章列表 -->
+  <div id="articlesView">
+    <div class="batch-bar show" id="batchBar">
+      <label><input type="checkbox" id="selectAll" onchange="toggleSelectAll('articles', this.checked)"> 全选</label>
+      <label><input type="checkbox" id="invertSelect" onchange="toggleInvert('articles')"> 反选</label>
+      <span class="selected-count" id="selectedCount">已选 0 条</span>
+      <button class="btn-batch-del" onclick="batchDelete()">批量删除</button>
+      <div class="search-box">
+        <input type="text" id="searchArticles" placeholder="搜索标题..." onkeydown="if(event.key==='Enter')searchArticlesFn()">
+        <button onclick="searchArticlesFn()">查询</button>
+        <button onclick="clearSearchArticles()">清除</button>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th class="col-check"></th>
+          <th class="col-seq">序号</th>
+          <th>标题</th>
+          <th>发布时间</th>
+          <th>抓取时间</th>
+          <th>来源网站</th>
+          <th class="col-action">操作</th>
+        </tr>
+      </thead>
+      <tbody id="articlesTbody"></tbody>
+    </table>
+    <div class="pagination" id="articlesPagination"></div>
+  </div>
+
+  <!-- 回收站 -->
+  <div id="trashView" style="display:none">
+    <div class="batch-bar show" id="trashBatchBar">
+      <label><input type="checkbox" id="trashSelectAll" onchange="toggleSelectAll('trash', this.checked)"> 全选</label>
+      <label><input type="checkbox" id="trashInvertSelect" onchange="toggleInvert('trash')"> 反选</label>
+      <span class="selected-count" id="trashSelectedCount">已选 0 条</span>
+      <button class="btn-batch-restore" onclick="batchRestore()">批量恢复</button>
+      <div class="search-box">
+        <input type="text" id="searchTrash" placeholder="搜索标题..." onkeydown="if(event.key==='Enter')searchTrashFn()">
+        <button onclick="searchTrashFn()">查询</button>
+        <button onclick="clearSearchTrash()">清除</button>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th class="col-check"></th>
+          <th class="col-seq">序号</th>
+          <th>标题</th>
+          <th>发布时间</th>
+          <th>抓取时间</th>
+          <th>来源网站</th>
+          <th>删除时间</th>
+          <th class="col-action">操作</th>
+        </tr>
+      </thead>
+      <tbody id="trashTbody"></tbody>
+    </table>
+    <div class="pagination" id="trashPagination"></div>
+  </div>
+</div>
+
+<!-- 设置弹窗 -->
+<div class="modal-overlay" id="configModal">
+  <div class="modal">
+    <h3>设置</h3>
+    <label>数据文件夹路径</label>
+    <input type="text" id="cfgDataDir" placeholder="例如: D:\网盘同步\data">
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeConfig()">取消</button>
+      <button class="btn-save" onclick="saveConfigForm()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentTab = 'articles';
+let articlesPage = 1;
+let trashPage = 1;
+let articlesQuery = '';
+let trashQuery = '';
+const PAGE_SIZE = 50;
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmtTime(t) {
+  if (!t) return '—';
+  return t.replace('T', ' ').substring(0, 19);
+}
+
+function fmtDate(t) {
+  if (!t) return '—';
+  return t.substring(0, 10);
+}
+
+// ── 状态栏 ──
+
+async function refreshStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    document.getElementById('lastScan').textContent = d.last_scan ? fmtTime(d.last_scan) : '—';
+    document.getElementById('lastNewCount').textContent = d.last_new_count || 0;
+    document.getElementById('totalArticles').textContent = d.total_articles || 0;
+    document.getElementById('articleCount').textContent = d.total_articles || 0;
+    document.getElementById('trashCount').textContent = d.trash_count || 0;
+    document.getElementById('dataDirDisplay').textContent = d.data_dir || '未设置路径';
+  } catch(e) {}
+}
+
+// ── 文章列表 ──
+
+async function loadArticles(page) {
+  articlesPage = page || 1;
+  try {
+    let url = `/api/articles?page=${articlesPage}&size=${PAGE_SIZE}`;
+    if (articlesQuery) url += `&q=${encodeURIComponent(articlesQuery)}`;
+    const r = await fetch(url);
+    const d = await r.json();
+    renderArticles(d.items, d.total);
+  } catch(e) {
+    document.getElementById('articlesTbody').innerHTML =
+      '<tr><td colspan="7" class="empty-msg">加载失败</td></tr>';
+  }
+}
+
+function renderArticles(items, total) {
+  const tbody = document.getElementById('articlesTbody');
+  if (!items.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-msg">暂无文章</td></tr>';
+    document.getElementById('articlesPagination').innerHTML = '';
+    document.getElementById('batchBar').classList.remove('show');
+    return;
+  }
+  document.getElementById('batchBar').classList.add('show');
+  tbody.innerHTML = items.map(a => `
+    <tr>
+      <td class="col-check"><input type="checkbox" class="row-check" value="${a.seq}" onchange="updateSelectedCount('articles')"></td>
+      <td class="col-seq">${a.seq}</td>
+      <td class="col-title"><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.title)}</a></td>
+      <td class="col-time">${fmtDate(a.published)}</td>
+      <td class="col-time">${fmtTime(a.crawled_at)}</td>
+      <td class="col-source">${esc(a.source_site)}</td>
+      <td class="col-action"><button class="btn-del" onclick="deleteArticle(${a.seq})">删除</button></td>
+    </tr>
+  `).join('');
+  renderPagination('articlesPagination', total, articlesPage, 'loadArticles');
+}
+
+// ── 回收站 ──
+
+async function loadTrash(page) {
+  trashPage = page || 1;
+  try {
+    let url = `/api/trash?page=${trashPage}&size=${PAGE_SIZE}`;
+    if (trashQuery) url += `&q=${encodeURIComponent(trashQuery)}`;
+    const r = await fetch(url);
+    const d = await r.json();
+    renderTrash(d.items, d.total);
+  } catch(e) {
+    document.getElementById('trashTbody').innerHTML =
+      '<tr><td colspan="8" class="empty-msg">加载失败</td></tr>';
+  }
+}
+
+function renderTrash(items, total) {
+  const tbody = document.getElementById('trashTbody');
+  if (!items.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-msg">回收站为空</td></tr>';
+    document.getElementById('trashPagination').innerHTML = '';
+    return;
+  }
+  tbody.innerHTML = items.map(a => `
+    <tr>
+      <td class="col-check"><input type="checkbox" class="trash-check" value="${a.seq}" onchange="updateSelectedCount('trash')"></td>
+      <td class="col-seq">${a.seq}</td>
+      <td class="col-title"><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.title)}</a></td>
+      <td class="col-time">${fmtDate(a.published)}</td>
+      <td class="col-time">${fmtTime(a.crawled_at)}</td>
+      <td class="col-source">${esc(a.source_site)}</td>
+      <td class="col-time">${fmtTime(a.deleted_at)}</td>
+      <td class="col-action"><button class="btn-restore" onclick="restoreArticle(${a.seq})">恢复</button></td>
+    </tr>
+  `).join('');
+  renderPagination('trashPagination', total, trashPage, 'loadTrash');
+}
+
+// ── 分页 ──
+
+function renderPagination(containerId, total, currentPage, fnName) {
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  if (totalPages <= 1) {
+    document.getElementById(containerId).innerHTML = '';
+    return;
+  }
+  document.getElementById(containerId).innerHTML = `
+    <button ${currentPage <= 1 ? 'disabled' : ''} onclick="${fnName}(${currentPage - 1})">上一页</button>
+    <span class="page-info">${currentPage} / ${totalPages}（共 ${total} 条）</span>
+    <button ${currentPage >= totalPages ? 'disabled' : ''} onclick="${fnName}(${currentPage + 1})">下一页</button>
+  `;
+}
+
+// ── 操作 ──
+
+async function deleteArticle(seq) {
+  await fetch(`/api/articles/${seq}/delete`, { method: 'POST' });
+  loadArticles(articlesPage);
+  refreshStatus();
+}
+
+async function restoreArticle(seq) {
+  await fetch(`/api/trash/${seq}/restore`, { method: 'POST' });
+  loadTrash(trashPage);
+  refreshStatus();
+}
+
+// ── Tab 切换 ──
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('tabArticles').className = 'nav-tab' + (tab === 'articles' ? ' active' : '');
+  document.getElementById('tabTrash').className = 'nav-tab' + (tab === 'trash' ? ' active' : '');
+  document.getElementById('articlesView').style.display = tab === 'articles' ? '' : 'none';
+  document.getElementById('trashView').style.display = tab === 'trash' ? '' : 'none';
+  if (tab === 'articles') loadArticles(1);
+  else loadTrash(1);
+}
+
+async function manualScan() {
+  const btn = document.getElementById('scanBtn');
+  btn.disabled = true;
+  btn.textContent = '扫描中...';
+  document.getElementById('statusDot').classList.add('scanning');
+  try {
+    await fetch('/api/scan', { method: 'POST' });
+    await refreshStatus();
+    if (currentTab === 'articles') loadArticles(1);
+    else loadTrash(1);
+  } catch(e) {}
+  btn.disabled = false;
+  btn.textContent = '立即扫描';
+  document.getElementById('statusDot').classList.remove('scanning');
+}
+
+// ── 批量选择/删除/恢复 ──
+
+function _checkClass(view) { return view === 'trash' ? '.trash-check' : '.row-check'; }
+
+function toggleSelectAll(view, checked) {
+  document.querySelectorAll(_checkClass(view)).forEach(cb => cb.checked = checked);
+  updateSelectedCount(view);
+}
+
+function toggleInvert(view) {
+  document.querySelectorAll(_checkClass(view)).forEach(cb => cb.checked = !cb.checked);
+  const prefix = view === 'trash' ? 'trash' : '';
+  const invertEl = document.getElementById(prefix ? 'trashInvertSelect' : 'invertSelect');
+  if (invertEl) invertEl.checked = false;
+  updateSelectedCount(view);
+}
+
+function updateSelectedCount(view) {
+  const cls = _checkClass(view);
+  const checked = document.querySelectorAll(`${cls}:checked`);
+  const all = document.querySelectorAll(cls);
+  const allChecked = all.length > 0 && checked.length === all.length;
+  if (view === 'trash') {
+    document.getElementById('trashSelectedCount').textContent = `已选 ${checked.length} 条`;
+    document.getElementById('trashSelectAll').checked = allChecked;
+  } else {
+    document.getElementById('selectedCount').textContent = `已选 ${checked.length} 条`;
+    document.getElementById('selectAll').checked = allChecked;
+  }
+}
+
+async function batchDelete() {
+  const seqs = [...document.querySelectorAll('.row-check:checked')].map(cb => Number(cb.value));
+  if (!seqs.length) return;
+  if (!confirm(`确定删除选中的 ${seqs.length} 条文章？`)) return;
+  await fetch('/api/articles/batch-delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ seqs }),
+  });
+  loadArticles(articlesPage);
+  refreshStatus();
+}
+
+async function batchRestore() {
+  const seqs = [...document.querySelectorAll('.trash-check:checked')].map(cb => Number(cb.value));
+  if (!seqs.length) return;
+  if (!confirm(`确定恢复选中的 ${seqs.length} 条文章？`)) return;
+  await fetch('/api/trash/batch-restore', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ seqs }),
+  });
+  loadTrash(trashPage);
+  refreshStatus();
+}
+
+// ── 搜索 ──
+
+function searchArticlesFn() {
+  articlesQuery = document.getElementById('searchArticles').value.trim();
+  loadArticles(1);
+}
+function clearSearchArticles() {
+  articlesQuery = '';
+  document.getElementById('searchArticles').value = '';
+  loadArticles(1);
+}
+function searchTrashFn() {
+  trashQuery = document.getElementById('searchTrash').value.trim();
+  loadTrash(1);
+}
+function clearSearchTrash() {
+  trashQuery = '';
+  document.getElementById('searchTrash').value = '';
+  loadTrash(1);
+}
+
+// ── 设置弹窗 ──
+
+async function openConfig() {
+  const r = await fetch('/api/config');
+  const cfg = await r.json();
+  document.getElementById('cfgDataDir').value = cfg.data_dir || '';
+  document.getElementById('configModal').classList.add('show');
+}
+
+function closeConfig() {
+  document.getElementById('configModal').classList.remove('show');
+}
+
+async function saveConfigForm() {
+  const dataDir = document.getElementById('cfgDataDir').value.trim();
+  const r = await fetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data_dir: dataDir }),
+  });
+  const d = await r.json();
+  if (d.error) { alert(d.error); return; }
+  closeConfig();
+  refreshStatus();
+}
+
+// ── 初始化 ──
+
+refreshStatus();
+loadArticles(1);
+setInterval(refreshStatus, 60000);
+</script>
+</body>
+</html>

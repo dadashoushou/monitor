@@ -4,13 +4,15 @@
 
 ## 功能
 
-- 添加/编辑/删除监控网站
+- 添加/编辑/删除监控网站，支持拖拽排序
 - RSS 自动检测（扫描 `<link>`、`<a>` 标签及常见路径）
 - 多种抓取模式：auto / html / js（动态渲染）/ stealth（隐蔽抓取）
 - AI 智能分析：调用 LLM 自动生成 CSS 选择器规则，无需手动适配每个站点
+- 增量抓取：自动跳过已抓取的文章（URL 去重）
+- 文章时效过滤：可按天数过滤旧文章（1/2/3/5/7 天）
 - 定时抓取 + 手动抓取（单个/全部）
 - 抓取历史查看，支持展开文章列表
-- 实时进度条
+- 统一状态栏：实时显示抓取/AI 分析进度
 
 ## 技术栈
 
@@ -32,12 +34,14 @@ python app.py
 
 ## 配置
 
-编辑项目根目录下的 `config.json`：
+复制 `config.example.json` 为 `config.json`，编辑：
 
 ```json
 {
   "crawl_interval_hours": 6,
   "data_dir": "",
+  "max_items": 200,
+  "max_article_age_days": 0,
   "ai": {
     "api_url": "https://api.deepseek.com/v1",
     "api_key": "sk-xxx",
@@ -50,6 +54,8 @@ python app.py
 |------|------|
 | `crawl_interval_hours` | 定时抓取间隔（小时） |
 | `data_dir` | 抓取结果保存目录，空则使用默认 `./data` |
+| `max_items` | 单站点最大抓取条数（默认 200） |
+| `max_article_age_days` | 文章时效过滤天数（0 = 不过滤） |
 | `ai.api_url` | LLM API 地址（OpenAI 兼容接口） |
 | `ai.api_key` | API 密钥 |
 | `ai.model` | 模型名称 |
@@ -59,9 +65,11 @@ python app.py
 对于新站点，点击「AI分析」按钮即可自动生成抓取规则：
 
 1. 后端抓取目标页面 HTML
-2. 去除 script/style/注释，截取前 30KB
+2. 深度清洗：去除 script/style/svg/表单等噪音，保留结构信息，截取前 64KB
 3. 调用 LLM 分析页面结构，生成 CSS 选择器 + URL 过滤 + 时间提取规则
 4. 规则缓存到 `sites.json`，后续抓取直接使用，零 AI 开销
+
+分析过程中状态栏实时显示进度（抓取页面 → 噪音过滤 → AI 分析 → 解析结果）。
 
 未配置 AI 或未分析的站点自动降级到内置规则，不影响基本功能。
 
