@@ -4,8 +4,8 @@
   "max_items": 200,
   "max_article_age_days": 0,
   "ai": {
-    "api_url": "https://api.deepseek.com/v1",
-    "api_key": "your-api-key-here",
-    "model": "deepseek-chat"
+    "api_url": "https://api.openai.com/v1",
+    "api_key": "<your-api-key>",
+    "model": "<your-model-name>"
   }
 }

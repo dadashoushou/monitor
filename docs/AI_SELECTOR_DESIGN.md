@@ -91,11 +91,11 @@
 ```json
 {
   "crawl_interval_hours": 1,
-  "data_dir": "C:\\Users\\PC\\Desktop\\抓取测试",
+  "data_dir": "./data",
   "ai": {
     "api_url": "https://api.openai.com/v1",
-    "api_key": "sk-...",
-    "model": "gpt-4o-mini"
+    "api_key": "<your-api-key>",
+    "model": "<your-model-name>"
   }
 }
 ```

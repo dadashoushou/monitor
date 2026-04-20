@@ -1,27 +1,24 @@
 # OpenMonitor
 
-网站内容监控抓取工具 + Web 管理界面
+网站内容监控与抓取工具，带 Web 管理界面、RSS 检测、多抓取模式和可选 AI 规则分析。
 
 ## 功能
 
-- 添加/编辑/删除监控网站，支持拖拽排序
-- RSS 自动检测（扫描 `<link>`、`<a>` 标签及常见路径）
-- 多种抓取模式：auto / html / js（动态渲染）/ stealth（隐蔽抓取）
-- AI 智能分析：调用 LLM 自动生成 CSS 选择器规则，无需手动适配每个站点
-- 增量抓取：自动跳过已抓取的文章（URL 去重）
-- 文章时效过滤：可按天数过滤旧文章（1/2/3/5/7 天）
-- 定时抓取 + 手动抓取（单个/全部）
-- 抓取历史查看，支持展开文章列表
-- 统一状态栏：实时显示抓取/AI 分析进度
+- 添加、编辑、删除监控站点
+- 自动检测 RSS，并在 RSS / HTML / JS / stealth 模式之间切换
+- 基于 Scrapling 抓取静态页、动态页和带反爬保护的页面
+- 使用 AI 生成选择器规则，并缓存到本地站点配置
+- 支持定时抓取、手动抓取、历史结果查看和增量去重
+- 支持文章时效过滤和统一状态栏进度反馈
 
 ## 技术栈
 
-- **后端**: Python 3.12 + Flask
-- **抓取引擎**: [Scrapling](https://github.com/D4Vinci/Scrapling)（Fetcher / DynamicFetcher / StealthyFetcher）
-- **RSS 解析**: feedparser
-- **AI 分析**: 支持任何 OpenAI 兼容 API（OpenAI / DeepSeek / Ollama 等）
-- **前端**: 单文件 Jinja2 模板，无框架依赖
-- **数据存储**: JSON 文件（sites.json / config.json / data/）
+- 后端：Python 3.12 + Flask
+- 抓取引擎：[Scrapling](https://github.com/D4Vinci/Scrapling)
+- RSS 解析：feedparser
+- AI 分析：任意 OpenAI 兼容接口
+- 前端：Jinja2 模板
+- 存储：本地 JSON 文件
 
 ## 快速启动
 
@@ -30,11 +27,11 @@ pip install flask requests feedparser apscheduler scrapling
 python app.py
 ```
 
-浏览器打开 http://localhost:5000
+默认访问地址：`http://localhost:5000`
 
 ## 配置
 
-复制 `config.example.json` 为 `config.json`，编辑：
+复制 `config.example.json` 为 `config.json`，填入你自己的运行参数：
 
 ```json
 {
@@ -43,9 +40,9 @@ python app.py
   "max_items": 200,
   "max_article_age_days": 0,
   "ai": {
-    "api_url": "https://api.deepseek.com/v1",
-    "api_key": "sk-xxx",
-    "model": "deepseek-chat"
+    "api_url": "https://api.openai.com/v1",
+    "api_key": "<your-api-key>",
+    "model": "<your-model-name>"
   }
 }
 ```
@@ -53,39 +50,53 @@ python app.py
 | 字段 | 说明 |
 |------|------|
 | `crawl_interval_hours` | 定时抓取间隔（小时） |
-| `data_dir` | 抓取结果保存目录，空则使用默认 `./data` |
-| `max_items` | 单站点最大抓取条数（默认 200） |
-| `max_article_age_days` | 文章时效过滤天数（0 = 不过滤） |
-| `ai.api_url` | LLM API 地址（OpenAI 兼容接口） |
-| `ai.api_key` | API 密钥 |
-| `ai.model` | 模型名称 |
+| `data_dir` | 抓取结果保存目录，留空时使用 `./data` |
+| `max_items` | 单站点最大抓取条数 |
+| `max_article_age_days` | 文章时效过滤天数，`0` 表示不过滤 |
+| `ai.api_url` | OpenAI 兼容接口地址 |
+| `ai.api_key` | 你的 API 密钥 |
+| `ai.model` | 你的模型名 |
 
-## AI 智能分析
+## AI 分析流程
 
-对于新站点，点击「AI分析」按钮即可自动生成抓取规则：
+点击站点的“AI 分析”后，系统会：
 
-1. 后端抓取目标页面 HTML
-2. 深度清洗：去除 script/style/svg/表单等噪音，保留结构信息，截取前 64KB
-3. 调用 LLM 分析页面结构，生成 CSS 选择器 + URL 过滤 + 时间提取规则
-4. 规则缓存到 `sites.json`，后续抓取直接使用，零 AI 开销
+1. 抓取目标页面 HTML
+2. 清洗噪音内容并截断到安全大小
+3. 调用 LLM 生成 CSS 选择器、URL 过滤和时间提取规则
+4. 将规则写入本地 `sites.json`，后续抓取直接复用
 
-分析过程中状态栏实时显示进度（抓取页面 → 噪音过滤 → AI 分析 → 解析结果）。
+未配置 AI 时，系统会回退到内置抓取逻辑。
 
-未配置 AI 或未分析的站点自动降级到内置规则，不影响基本功能。
+## 公开仓库说明
+
+本仓库不会提交以下本地文件或产物：
+
+- `config.json`
+- `sites.json`
+- `state.json`
+- `data/`
+- `raw/`
+- `graphify-out/`
+- `frontend/graphify-out/`
+- `frontend/config.json`
+- `frontend/state.json`
+- 各类测试缓存和图谱缓存
+
+发布前检查见 [docs/PUBLIC_REPO_GUIDE.md](docs/PUBLIC_REPO_GUIDE.md)。
 
 ## 项目结构
 
-```
-├── app.py              # Flask 主应用 + API 路由
-├── crawler.py          # 抓取引擎（RSS / HTML / JS / Stealth）
-├── ai_analyzer.py      # AI 页面结构分析器
-├── config.json         # 运行配置
-├── sites.json          # 监控站点列表
+```text
+.
+├── app.py
+├── ai_analyzer.py
+├── crawler.py
+├── config.example.json
 ├── templates/
-│   └── index.html      # 前端页面
 ├── tests/
-│   └── test_crawler.py # 单元测试
-└── data/               # 抓取结果 JSON 文件
+├── docs/
+└── frontend/
 ```
 
 ## API
@@ -93,10 +104,10 @@ python app.py
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET/POST | `/api/sites` | 站点 CRUD |
-| PUT/DELETE | `/api/sites/<id>` | 更新/删除站点 |
-| POST | `/api/check` | 检测所有站点 RSS |
-| POST | `/api/crawl` | 抓取所有站点 |
-| POST | `/api/crawl/<id>` | 抓取单个站点 |
+| PUT/DELETE | `/api/sites/<id>` | 更新或删除站点 |
+| POST | `/api/check` | 批量检测 RSS |
+| POST | `/api/crawl` | 批量抓取 |
+| POST | `/api/crawl/<id>` | 单站点抓取 |
 | POST | `/api/sites/<id>/analyze` | AI 分析站点结构 |
-| GET/POST | `/api/config` | 配置管理 |
+| GET/POST | `/api/config` | 读取或更新运行配置 |
 | GET | `/api/results/<id>` | 查看抓取历史 |

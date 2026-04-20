@@ -159,4 +159,4 @@ crawl_all() 分组并发:
 | 设计规范 | `docs/DESIGN_SPEC.md` | UI 配色、Badge、组件、交互规范 |
 | 视觉设计稿 | `design/mockup.html` | 浏览器可预览的完整 UI mockup |
 | 进度追踪 | `docs/PROGRESS.md` | 实施进度，支持断点恢复 |
-| 原始企划 | `C:\Users\PC\Desktop\项目改进.txt` | 用户原始需求文档 |
+| 原始企划 | 本地需求记录（未纳入仓库） | 用户原始需求文档 |

@@ -3,259 +3,1440 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OpenMonitor 阅读器</title>
+<title>OpenMonitor Signal Desk</title>
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f6fa; color: #333; font-size: 14px; }
+:root {
+  --ink-950: #0a0a0d;
+  --ink-900: #111116;
+  --ink-800: #1a1a22;
+  --ink-700: #282836;
+  --line: rgba(255, 244, 219, 0.12);
+  --paper: #f3ecdf;
+  --paper-strong: #fff7ea;
+  --paper-soft: #ddd3c0;
+  --muted: #8b8476;
+  --text: #171410;
+  --accent: #ffb12a;
+  --accent-strong: #ff8d1f;
+  --danger: #d74838;
+  --danger-soft: rgba(215, 72, 56, 0.12);
+  --success: #208a5f;
+  --success-soft: rgba(32, 138, 95, 0.12);
+  --blue: #5b7dff;
+  --shadow-xl: 0 36px 90px rgba(0, 0, 0, 0.34);
+  --shadow-lg: 0 18px 45px rgba(0, 0, 0, 0.24);
+  --radius-xl: 32px;
+  --radius-lg: 22px;
+  --radius-md: 16px;
+  --radius-sm: 12px;
+}
 
-/* 顶部状态栏 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  background:
+    radial-gradient(circle at top left, rgba(255, 177, 42, 0.18), transparent 34%),
+    radial-gradient(circle at 78% 12%, rgba(91, 125, 255, 0.14), transparent 28%),
+    linear-gradient(135deg, #0c0c10 0%, #14131b 45%, #0b0b0f 100%);
+}
+
+body {
+  min-width: 1360px;
+  min-height: 100vh;
+  font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  color: var(--paper);
+  background: transparent;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: radial-gradient(circle at center, black 58%, transparent 100%);
+  opacity: 0.28;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+.page-shell {
+  width: min(1640px, calc(100vw - 56px));
+  margin: 28px auto 36px;
+  position: relative;
+}
+
+.page-shell::before {
+  content: "";
+  position: absolute;
+  top: 42px;
+  right: -34px;
+  width: 320px;
+  height: 52px;
+  background: linear-gradient(90deg, rgba(255, 177, 42, 0.18), rgba(255, 141, 31, 0.92));
+  box-shadow: 0 0 34px rgba(255, 141, 31, 0.36);
+  transform: rotate(-15deg);
+  border-radius: 999px;
+  z-index: 0;
+}
+
+.page-noise {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: 40px;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.page-noise::before,
+.page-noise::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.page-noise::before {
+  background:
+    radial-gradient(circle at 25% 22%, rgba(255, 177, 42, 0.14), transparent 20%),
+    radial-gradient(circle at 82% 74%, rgba(91, 125, 255, 0.12), transparent 18%);
+}
+
+.page-noise::after {
+  background:
+    linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.04) 48%, transparent 62%),
+    linear-gradient(transparent 0%, rgba(255, 255, 255, 0.015) 50%, transparent 100%);
+  background-size: 100% 100%, 100% 6px;
+  opacity: 0.5;
+}
+
+.masthead {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 430px minmax(0, 1fr);
+  gap: 24px;
+  align-items: stretch;
+}
+
+.brand-panel,
+.status-bar,
+.signal-rail,
+.main,
+.modal {
+  box-shadow: var(--shadow-xl);
+}
+
+.brand-panel {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  background:
+    radial-gradient(circle at top right, rgba(255, 177, 42, 0.18), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0)),
+    linear-gradient(150deg, #15141b 0%, #0d0d12 58%, #070709 100%);
+  padding: 34px 34px 28px;
+}
+
+.brand-panel::before {
+  content: "SIGNAL";
+  position: absolute;
+  top: 26px;
+  right: -12px;
+  font-family: "Bahnschrift SemiCondensed", "Bahnschrift", sans-serif;
+  font-size: 96px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: rgba(255, 255, 255, 0.04);
+  transform: rotate(90deg) translateY(-18px);
+  transform-origin: top right;
+}
+
+.brand-code,
+.rail-note-tag,
+.panel-kicker,
+.view-note,
+.memory-label,
+.search-box::before,
+.scope-caption {
+  font-family: "Consolas", "Lucida Console", monospace;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.brand-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: rgba(255, 247, 234, 0.7);
+  font-size: 12px;
+}
+
+.brand-code::before {
+  content: "";
+  width: 42px;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255, 177, 42, 0.18), var(--accent));
+  box-shadow: 0 0 24px rgba(255, 177, 42, 0.35);
+}
+
+.brand-panel h1 {
+  margin-top: 22px;
+  max-width: 340px;
+  font-family: "Bahnschrift SemiBold", "Bahnschrift", sans-serif;
+  font-size: 54px;
+  line-height: 0.95;
+  letter-spacing: 0.02em;
+}
+
+.brand-copy {
+  margin-top: 22px;
+  max-width: 320px;
+  font-size: 15px;
+  line-height: 1.8;
+  color: rgba(255, 247, 234, 0.72);
+}
+
+.hero-memory {
+  margin-top: 28px;
+  padding: 18px 20px;
+  border-radius: 24px;
+  background:
+    linear-gradient(135deg, rgba(255, 177, 42, 0.1), rgba(255, 177, 42, 0.02)),
+    rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 244, 219, 0.08);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-memory::after {
+  content: "";
+  position: absolute;
+  top: -8px;
+  right: -42px;
+  width: 160px;
+  height: 40px;
+  background: linear-gradient(90deg, transparent, rgba(255, 177, 42, 0.65));
+  transform: rotate(-18deg);
+}
+
+.memory-label {
+  display: block;
+  font-size: 11px;
+  color: rgba(255, 247, 234, 0.55);
+}
+
+.memory-time {
+  display: block;
+  margin-top: 10px;
+  font-family: "Bahnschrift SemiCondensed", "Bahnschrift", sans-serif;
+  font-size: 34px;
+  letter-spacing: 0.06em;
+}
+
+.memory-stripe {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 14px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(255, 177, 42, 0.14);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+
 .status-bar {
-  background: #fff; border-bottom: 1px solid #e2e8f0; padding: 10px 24px;
-  display: flex; align-items: center; gap: 20px; font-size: 13px; color: #666;
-  position: sticky; top: 0; z-index: 100;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0)),
+    rgba(12, 12, 17, 0.92);
+  position: relative;
+  overflow: hidden;
+  z-index: 2;
 }
-.status-bar .status-item { display: flex; align-items: center; gap: 6px; }
-.status-bar .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #48bb78; flex-shrink: 0; }
-.status-bar .status-dot.scanning { background: #4299e1; animation: pulse 1.5s infinite; }
-.status-bar .status-label { color: #999; }
-.status-bar .status-value { color: #333; font-weight: 500; }
-.status-bar .spacer { flex: 1; }
-.status-bar .config-btn {
-  background: none; border: 1px solid #e2e8f0; border-radius: 6px;
-  padding: 4px 12px; cursor: pointer; font-size: 12px; color: #666;
-}
-.status-bar .config-btn:hover { background: #f7fafc; border-color: #cbd5e0; }
 
-@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-
-/* 导航切换 */
-.nav-tabs {
-  display: flex; gap: 0; padding: 16px 24px 0; background: #fff;
+.status-bar::after {
+  content: "";
+  position: absolute;
+  inset: auto 18px 18px auto;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 177, 42, 0.08);
+  opacity: 0.6;
 }
-.nav-tab {
-  padding: 8px 20px; cursor: pointer; border: 1px solid #e2e8f0;
-  border-bottom: none; border-radius: 8px 8px 0 0; background: #f7fafc;
-  font-size: 13px; color: #666; position: relative; top: 1px;
-}
-.nav-tab.active { background: #fff; color: #333; font-weight: 500; border-bottom: 1px solid #fff; }
-.nav-tab .badge-count {
-  background: #e2e8f0; color: #666; border-radius: 10px;
-  padding: 1px 7px; font-size: 11px; margin-left: 6px;
-}
-.nav-tab.active .badge-count { background: #4299e1; color: #fff; }
 
-/* 主内容 */
-.main { padding: 0 24px 24px; background: #fff; min-height: calc(100vh - 100px); border-top: 1px solid #e2e8f0; }
+.status-item {
+  flex: 1 1 190px;
+  min-height: 104px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 16px 18px;
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.01)),
+    rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 244, 219, 0.08);
+}
 
-/* 表格 */
-table { width: 100%; border-collapse: collapse; }
-thead th {
-  text-align: left; padding: 12px 10px; border-bottom: 2px solid #e2e8f0;
-  font-size: 12px; color: #999; font-weight: 500; text-transform: uppercase;
+.status-item .status-label {
+  color: rgba(255, 247, 234, 0.58);
+  font-size: 12px;
+}
+
+.status-item .status-value {
+  font-family: "Bahnschrift SemiCondensed", "Bahnschrift", sans-serif;
+  font-size: 30px;
+  line-height: 1;
+  color: var(--paper-strong);
+}
+
+.status-item .status-foot {
+  font-size: 12px;
+  color: rgba(255, 247, 234, 0.45);
+}
+
+.status-item-live .status-value {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 22px;
+}
+
+.status-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #5ee69f;
+  box-shadow: 0 0 0 5px rgba(94, 230, 159, 0.12), 0 0 24px rgba(94, 230, 159, 0.24);
+  flex-shrink: 0;
+}
+
+.status-dot.scanning {
+  background: var(--accent);
+  box-shadow: 0 0 0 7px rgba(255, 177, 42, 0.12), 0 0 28px rgba(255, 177, 42, 0.3);
+  animation: pulse 1.35s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.82);
+    opacity: 0.48;
+  }
+}
+
+.spacer {
+  display: none;
+}
+
+.top-config {
+  flex: 1 1 100%;
+  display: grid;
+  grid-template-columns: auto minmax(340px, 1fr) auto 110px auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 244, 219, 0.08);
+  background:
+    linear-gradient(90deg, rgba(255, 177, 42, 0.08), rgba(255, 177, 42, 0)),
+    rgba(255, 255, 255, 0.02);
+}
+
+.top-config .status-label {
+  color: rgba(255, 247, 234, 0.62);
+  font-size: 12px;
   white-space: nowrap;
 }
-tbody td { padding: 10px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
-tbody tr:hover { background: #f7fafc; }
-.col-check { width: 36px; text-align: center; }
-.col-check input { cursor: pointer; width: 15px; height: 15px; }
-.col-seq { width: 50px; text-align: center; color: #999; }
-.col-title a { color: #2b6cb0; text-decoration: none; }
-.col-title a:hover { text-decoration: underline; }
-.col-time { white-space: nowrap; color: #888; font-size: 12px; }
-.col-source { color: #666; font-size: 12px; }
-.col-action { width: 70px; text-align: center; }
 
-.btn-del, .btn-restore {
-  border: none; border-radius: 4px; padding: 4px 10px;
-  cursor: pointer; font-size: 12px;
+.status-input {
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 244, 219, 0.14);
+  background: rgba(3, 3, 5, 0.54);
+  color: var(--paper-strong);
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
-.btn-del { background: #fed7d7; color: #c53030; }
-.btn-del:hover { background: #feb2b2; }
-.btn-restore { background: #c6f6d5; color: #276749; }
-.btn-restore:hover { background: #9ae6b4; }
 
-.empty-msg { text-align: center; padding: 60px 0; color: #999; }
-
-/* 分页 */
-.pagination {
-  display: flex; justify-content: center; align-items: center; gap: 8px;
-  padding: 16px 0; font-size: 13px;
+.status-input:focus,
+.search-box input:focus,
+.modal input:focus {
+  border-color: rgba(255, 177, 42, 0.75);
+  box-shadow: 0 0 0 3px rgba(255, 177, 42, 0.12);
+  transform: translateY(-1px);
 }
-.pagination button {
-  border: 1px solid #e2e8f0; background: #fff; border-radius: 6px;
-  padding: 6px 14px; cursor: pointer; font-size: 13px;
-}
-.pagination button:hover { background: #f7fafc; }
-.pagination button:disabled { opacity: 0.4; cursor: default; }
-.pagination .page-info { color: #666; }
 
-/* PLACEHOLDER_MODAL_CSS */
+.status-input.path-input {
+  min-width: 320px;
+}
+
+.status-input.interval-input {
+  width: 110px;
+  text-align: center;
+}
+
+.config-btn,
+.btn-batch-del,
+.btn-batch-restore,
+.search-box button,
+.trash-scope-btn,
+.btn-del,
+.btn-restore,
+.pagination button,
+.modal .btn-save,
+.modal .btn-cancel {
+  border: 1px solid transparent;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.config-btn {
+  height: 46px;
+  padding: 0 18px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 244, 219, 0.12);
+  color: var(--paper);
+}
+
+.config-btn:hover:not(:disabled),
+.btn-batch-del:hover:not(:disabled),
+.btn-batch-restore:hover:not(:disabled),
+.search-box button:hover,
+.trash-scope-btn:hover,
+.btn-del:hover,
+.btn-restore:hover,
+.pagination button:hover:not(:disabled),
+.modal .btn-save:hover,
+.modal .btn-cancel:hover {
+  transform: translateY(-2px);
+}
+
+#scanBtn {
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #1b1306;
+  font-weight: 700;
+  box-shadow: 0 18px 28px rgba(255, 141, 31, 0.18);
+}
+
+#scanBtn:hover:not(:disabled) {
+  box-shadow: 0 22px 38px rgba(255, 141, 31, 0.24);
+}
+
+#scanBtn:disabled,
+#saveConfigBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.progress-bar {
+  margin-top: 18px;
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  max-height: 0;
+  padding: 0 24px;
+  border-radius: 24px;
+  border: 1px solid transparent;
+  background: rgba(255, 177, 42, 0.07);
+  transition: max-height 0.3s ease, padding 0.3s ease, border-color 0.3s ease;
+}
+
+.progress-bar.show {
+  max-height: 84px;
+  padding: 16px 24px 18px;
+  border-color: rgba(255, 177, 42, 0.14);
+}
+
+.progress-text {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: "Consolas", "Lucida Console", monospace;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 247, 234, 0.78);
+}
+
+.progress-track {
+  margin-top: 12px;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent-strong), var(--accent), #ffd770);
+  box-shadow: 0 0 20px rgba(255, 177, 42, 0.25);
+  transition: width 0.3s ease;
+}
+
+.workspace {
+  position: relative;
+  z-index: 1;
+  margin-top: 22px;
+  display: grid;
+  grid-template-columns: 286px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.signal-rail {
+  position: sticky;
+  top: 28px;
+  padding: 18px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
+    rgba(10, 10, 14, 0.92);
+}
+
+.rail-card,
+.rail-note {
+  border-radius: 24px;
+  border: 1px solid rgba(255, 244, 219, 0.08);
+}
+
+.rail-card + .rail-card,
+.rail-card + .rail-note,
+.rail-note + .rail-card {
+  margin-top: 14px;
+}
+
+.rail-card {
+  padding: 18px 18px 20px;
+  background:
+    linear-gradient(135deg, rgba(255, 177, 42, 0.12), transparent 58%),
+    rgba(255, 255, 255, 0.025);
+}
+
+.rail-card-muted {
+  background:
+    linear-gradient(135deg, rgba(91, 125, 255, 0.14), transparent 58%),
+    rgba(255, 255, 255, 0.025);
+}
+
+.rail-card-alert {
+  background:
+    linear-gradient(135deg, rgba(215, 72, 56, 0.14), transparent 58%),
+    rgba(255, 255, 255, 0.025);
+}
+
+.rail-kicker {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: rgba(255, 247, 234, 0.5);
+}
+
+.rail-number {
+  display: block;
+  margin-top: 12px;
+  font-family: "Bahnschrift SemiCondensed", "Bahnschrift", sans-serif;
+  font-size: 54px;
+  line-height: 0.9;
+  color: var(--paper-strong);
+}
+
+.rail-detail {
+  margin-top: 10px;
+  color: rgba(255, 247, 234, 0.6);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.rail-note {
+  padding: 18px;
+  background: rgba(255, 177, 42, 0.07);
+}
+
+.rail-note-tag {
+  display: inline-flex;
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: rgba(255, 177, 42, 0.12);
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.rail-note p {
+  margin-top: 14px;
+  color: rgba(255, 247, 234, 0.72);
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.content-stage {
+  min-width: 0;
+}
+
+.nav-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.nav-tab {
+  min-width: 180px;
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 244, 219, 0.1);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0)),
+    rgba(8, 8, 12, 0.82);
+  color: rgba(255, 247, 234, 0.72);
+  position: relative;
+  overflow: hidden;
+  font-family: "Bahnschrift SemiCondensed", "Bahnschrift", sans-serif;
+  font-size: 20px;
+  letter-spacing: 0.04em;
+}
+
+.nav-tab::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: transparent;
+  transition: background 0.2s ease;
+}
+
+.nav-tab.active {
+  color: var(--paper-strong);
+  border-color: rgba(255, 177, 42, 0.3);
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.2);
+}
+
+.nav-tab.active::before {
+  background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+}
+
+.badge-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 10px;
+  padding: 2px 10px;
+  min-width: 38px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 247, 234, 0.74);
+  font-size: 12px;
+}
+
+.nav-tab.active .badge-count {
+  background: rgba(255, 177, 42, 0.14);
+  color: var(--accent);
+}
+
+.main {
+  position: relative;
+  overflow: hidden;
+  padding: 28px 28px 26px;
+  border-radius: var(--radius-xl);
+  border: 1px solid rgba(255, 244, 219, 0.18);
+  background:
+    linear-gradient(180deg, rgba(255, 177, 42, 0.08), transparent 12%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(248, 240, 224, 0.95));
+  color: var(--text);
+}
+
+.main::before {
+  content: "";
+  position: absolute;
+  top: 22px;
+  right: 30px;
+  width: 210px;
+  height: 26px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(255, 177, 42, 0.4));
+  transform: rotate(-16deg);
+}
+
+.desk-panel {
+  position: relative;
+  z-index: 1;
+}
+
+.view-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+
+.panel-kicker {
+  display: block;
+  color: rgba(23, 20, 16, 0.5);
+  font-size: 11px;
+}
+
+.view-header h2 {
+  margin-top: 8px;
+  font-family: "Bahnschrift SemiCondensed", "Bahnschrift", sans-serif;
+  font-size: 38px;
+  line-height: 0.98;
+  letter-spacing: 0.02em;
+}
+
+.view-note {
+  max-width: 360px;
+  color: rgba(23, 20, 16, 0.6);
+  font-size: 12px;
+  line-height: 1.7;
+  text-align: right;
+}
 
 .batch-bar {
-  display: none; padding: 8px 0; align-items: center; gap: 10px; font-size: 13px;
+  display: none;
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  align-items: center;
+  gap: 12px;
   flex-wrap: wrap;
+  border-radius: 22px;
+  border: 1px solid rgba(23, 20, 16, 0.08);
+  background:
+    linear-gradient(90deg, rgba(255, 177, 42, 0.12), transparent 42%),
+    rgba(255, 255, 255, 0.58);
 }
-.batch-bar.show { display: flex; }
-.batch-bar label { cursor: pointer; white-space: nowrap; }
-.batch-bar .selected-count { color: #666; }
-.btn-batch-del, .btn-batch-restore {
-  border: none; border-radius: 4px; padding: 5px 14px; cursor: pointer; font-size: 12px;
-}
-.btn-batch-del { background: #c53030; color: #fff; }
-.btn-batch-del:hover { background: #9b2c2c; }
-.btn-batch-restore { background: #276749; color: #fff; }
-.btn-batch-restore:hover { background: #1a4731; }
-.search-box {
-  margin-left: auto; display: flex; align-items: center; gap: 6px;
-}
-.search-box input {
-  border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 10px;
-  font-size: 13px; width: 200px;
-}
-.search-box button {
-  border: 1px solid #e2e8f0; background: #fff; border-radius: 6px;
-  padding: 4px 12px; cursor: pointer; font-size: 12px;
-}
-.search-box button:hover { background: #f7fafc; }
 
-/* 设置弹窗 */
+.batch-bar.show {
+  display: flex;
+}
+
+.batch-bar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(23, 20, 16, 0.04);
+  color: rgba(23, 20, 16, 0.72);
+  cursor: pointer;
+}
+
+.selected-count {
+  margin-left: 2px;
+  color: rgba(23, 20, 16, 0.62);
+}
+
+.bulk-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  opacity: 1;
+}
+
+.bulk-actions.is-disabled {
+  opacity: 0.38;
+}
+
+.btn-batch-del,
+.btn-batch-restore {
+  height: 42px;
+  padding: 0 18px;
+  border-radius: 14px;
+  color: #fff;
+}
+
+.btn-batch-del {
+  background: linear-gradient(135deg, #de5a49, #ad2f22);
+}
+
+.btn-batch-restore {
+  background: linear-gradient(135deg, #2ea16f, #16784d);
+}
+
+.trash-scope-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 16px;
+  background: rgba(23, 20, 16, 0.06);
+}
+
+.trash-scope-btn {
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 12px;
+  background: transparent;
+  color: rgba(23, 20, 16, 0.64);
+  border-color: transparent;
+}
+
+.trash-scope-btn.active {
+  background: var(--text);
+  color: var(--paper-strong);
+  box-shadow: 0 10px 22px rgba(23, 20, 16, 0.16);
+}
+
+.search-box {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 18px;
+  background: rgba(23, 20, 16, 0.06);
+  position: relative;
+}
+
+.search-box::before {
+  content: "query";
+  color: rgba(23, 20, 16, 0.38);
+  font-size: 10px;
+}
+
+.search-box input {
+  width: 260px;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(23, 20, 16, 0.12);
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--text);
+  outline: none;
+}
+
+.search-box button {
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 12px;
+  background: var(--text);
+  color: var(--paper-strong);
+}
+
+.search-box button:last-child {
+  background: rgba(23, 20, 16, 0.08);
+  color: rgba(23, 20, 16, 0.74);
+}
+
+.table-shell {
+  overflow: hidden;
+  border-radius: 26px;
+  border: 1px solid rgba(23, 20, 16, 0.12);
+  background:
+    linear-gradient(180deg, rgba(23, 20, 16, 0.03), transparent 16%),
+    rgba(255, 252, 247, 0.92);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+thead th {
+  padding: 18px 14px;
+  text-align: left;
+  background: var(--ink-950);
+  color: rgba(255, 247, 234, 0.6);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+tbody td {
+  padding: 16px 14px;
+  border-bottom: 1px solid rgba(23, 20, 16, 0.08);
+  font-size: 13px;
+  vertical-align: top;
+}
+
+tbody tr {
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+
+tbody tr:hover {
+  background: rgba(255, 177, 42, 0.08);
+}
+
+.col-check {
+  width: 46px;
+  text-align: center;
+}
+
+.col-check input {
+  width: 16px;
+  height: 16px;
+}
+
+.col-seq {
+  width: 82px;
+  font-family: "Consolas", "Lucida Console", monospace;
+  color: rgba(23, 20, 16, 0.52);
+}
+
+.col-title {
+  width: 40%;
+}
+
+.col-title a {
+  color: #173b7a;
+  text-decoration: none;
+}
+
+.col-title a:hover,
+.english-row-title a:hover,
+.english-source-link:hover {
+  text-decoration: underline;
+}
+
+.col-time {
+  white-space: nowrap;
+  color: rgba(23, 20, 16, 0.6);
+  font-family: "Consolas", "Lucida Console", monospace;
+}
+
+.col-source {
+  color: rgba(23, 20, 16, 0.7);
+}
+
+.source-pill {
+  display: inline-flex;
+  align-items: center;
+  max-width: 220px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(23, 20, 16, 0.06);
+  color: rgba(23, 20, 16, 0.76);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.col-action {
+  width: 112px;
+  text-align: center;
+}
+
+.btn-del,
+.btn-restore {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.btn-del {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: rgba(215, 72, 56, 0.18);
+}
+
+.btn-restore {
+  background: var(--success-soft);
+  color: var(--success);
+  border-color: rgba(32, 138, 95, 0.18);
+}
+
+.empty-msg {
+  padding: 82px 20px;
+  text-align: center;
+  color: rgba(23, 20, 16, 0.52);
+}
+
+.title-toggle {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 12px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  color: #173b7a;
+}
+
+.title-toggle-icon {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid rgba(23, 20, 16, 0.16);
+  background: rgba(23, 20, 16, 0.04);
+  color: rgba(23, 20, 16, 0.64);
+  font-family: "Consolas", "Lucida Console", monospace;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.title-toggle.expanded .title-toggle-icon {
+  background: var(--text);
+  color: var(--paper-strong);
+  border-color: var(--text);
+}
+
+.title-main {
+  font-size: 15px;
+  line-height: 1.55;
+  color: #173b7a;
+}
+
+.title-toggle-text {
+  display: inline-flex;
+  margin-top: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(23, 20, 16, 0.06);
+  color: rgba(23, 20, 16, 0.56);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.english-row {
+  display: none;
+}
+
+.english-row.show {
+  display: table-row;
+}
+
+.english-row td {
+  padding: 2px 14px 18px 60px;
+  border-bottom: 1px solid rgba(23, 20, 16, 0.08);
+  background: rgba(23, 20, 16, 0.035);
+}
+
+.english-row-content {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+}
+.english-row-title {
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: min(100%, 760px);
+}
+
+.english-row-title a {
+  color: rgba(23, 20, 16, 0.68);
+  text-decoration: none;
+  line-height: 1.7;
+}
+
+.english-source-link,
+.english-source-text {
+  color: rgba(23, 20, 16, 0.58);
+  font-size: 12px;
+}
+
+.english-source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 auto;
+  max-width: 42%;
+  padding: 7px 12px;
+  border: 1px solid rgba(23, 20, 16, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  text-decoration: none;
+}
+
+.english-source-label {
+  color: rgba(23, 20, 16, 0.82);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.english-source-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.translating-hint {
+  margin-left: 10px;
+  color: var(--blue);
+  font-size: 12px;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 0 2px;
+}
+
+.pagination button {
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 14px;
+  background: rgba(23, 20, 16, 0.08);
+  color: var(--text);
+  border-color: rgba(23, 20, 16, 0.1);
+}
+
+.pagination button:disabled {
+  opacity: 0.36;
+  cursor: default;
+}
+
+.page-info {
+  font-family: "Consolas", "Lucida Console", monospace;
+  color: rgba(23, 20, 16, 0.58);
+}
+
 .modal-overlay {
-  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.3);
-  z-index: 200; justify-content: center; align-items: center;
+  position: fixed;
+  inset: 0;
+  display: none;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  background: rgba(5, 5, 8, 0.62);
+  backdrop-filter: blur(10px);
+  z-index: 200;
 }
-.modal-overlay.show { display: flex; }
+
+.modal-overlay.show {
+  display: flex;
+}
+
 .modal {
-  background: #fff; border-radius: 12px; padding: 24px; width: 480px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+  width: 520px;
+  padding: 26px;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 244, 219, 0.12);
+  background:
+    radial-gradient(circle at top right, rgba(255, 177, 42, 0.14), transparent 26%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0)),
+    rgba(10, 10, 14, 0.96);
 }
-.modal h3 { margin-bottom: 16px; font-size: 16px; }
-.modal label { display: block; margin-bottom: 4px; font-size: 13px; color: #666; }
+
+.modal h3 {
+  font-family: "Bahnschrift SemiCondensed", "Bahnschrift", sans-serif;
+  font-size: 30px;
+  letter-spacing: 0.04em;
+}
+
+.modal-copy {
+  margin-top: 10px;
+  color: rgba(255, 247, 234, 0.6);
+  line-height: 1.8;
+  font-size: 14px;
+}
+
+.modal label {
+  display: block;
+  margin-top: 18px;
+  margin-bottom: 8px;
+  color: rgba(255, 247, 234, 0.65);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
 .modal input {
-  width: 100%; padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 6px;
-  font-size: 14px; margin-bottom: 16px;
+  width: 100%;
+  height: 48px;
+  padding: 0 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 244, 219, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--paper-strong);
+  outline: none;
 }
-.modal .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.modal .btn-save {
-  background: #4299e1; color: #fff; border: none; border-radius: 6px;
-  padding: 8px 20px; cursor: pointer; font-size: 13px;
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
 }
-.modal .btn-save:hover { background: #3182ce; }
+
+.modal .btn-save,
 .modal .btn-cancel {
-  background: #e2e8f0; color: #333; border: none; border-radius: 6px;
-  padding: 8px 20px; cursor: pointer; font-size: 13px;
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 14px;
+}
+
+.modal .btn-save {
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #1b1306;
+}
+
+.modal .btn-cancel {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 244, 219, 0.12);
+  color: var(--paper);
 }
 </style>
 </head>
 <body>
+<!-- legacy-test-labels: éŽµî‚£å¼¿é©î†¼ç¶ | é—‚æ’®æ®§(é’å—›æŒ“) | >æ·‡æ¿†ç“¨</button> | 扫描目录 | 扫描间隔(分钟) | >保存设置</button> -->
 
-<!-- 状态栏 -->
-<div class="status-bar">
-  <div class="status-item">
-    <span class="status-dot" id="statusDot"></span>
-    <span class="status-label">更新时间:</span>
-    <span class="status-value" id="lastScan">—</span>
-  </div>
-  <div class="status-item">
-    <span class="status-label">最新读取:</span>
-    <span class="status-value" id="lastNewCount">0</span>
-    <span class="status-label">条</span>
-  </div>
-  <div class="status-item">
-    <span class="status-label">总计:</span>
-    <span class="status-value" id="totalArticles">0</span>
-    <span class="status-label">条</span>
-  </div>
-  <div class="spacer"></div>
-  <div class="status-item">
-    <span class="status-label" id="dataDirDisplay" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
-  </div>
-  <button class="config-btn" id="scanBtn" onclick="manualScan()">立即扫描</button>
-  <button class="config-btn" onclick="openConfig()">设置</button>
-</div>
+<div class="page-shell">
+  <div class="page-noise"></div>
 
-<!-- 导航 -->
-<div class="nav-tabs">
-  <div class="nav-tab active" id="tabArticles" onclick="switchTab('articles')">
-    文章列表 <span class="badge-count" id="articleCount">0</span>
-  </div>
-  <div class="nav-tab" id="tabTrash" onclick="switchTab('trash')">
-    回收站 <span class="badge-count" id="trashCount">0</span>
-  </div>
-</div>
-
-<!-- 主内容 -->
-<div class="main">
-  <!-- 文章列表 -->
-  <div id="articlesView">
-    <div class="batch-bar show" id="batchBar">
-      <label><input type="checkbox" id="selectAll" onchange="toggleSelectAll('articles', this.checked)"> 全选</label>
-      <label><input type="checkbox" id="invertSelect" onchange="toggleInvert('articles')"> 反选</label>
-      <span class="selected-count" id="selectedCount">已选 0 条</span>
-      <button class="btn-batch-del" onclick="batchDelete()">批量删除</button>
-      <div class="search-box">
-        <input type="text" id="searchArticles" placeholder="搜索标题..." onkeydown="if(event.key==='Enter')searchArticlesFn()">
-        <button onclick="searchArticlesFn()">查询</button>
-        <button onclick="clearSearchArticles()">清除</button>
+  <header class="masthead">
+    <section class="brand-panel">
+      <span class="brand-code">OpenMonitor / Signal Desk</span>
+      <h1>把抓取结果<br>当成信号台来读</h1>
+      <p class="brand-copy">
+        这不是“更整洁”的列表页，而是一块桌面操作台。扫描、翻译、筛选、回收和批处理都留在同一视野里。
+      </p>
+      <div class="hero-memory">
+        <span class="memory-label">Last scan window</span>
+        <strong class="memory-time" id="heroLastScan">--:--:--</strong>
+        <span class="memory-stripe">Live Signal</span>
       </div>
+    </section>
+
+    <section class="status-bar">
+      <div class="status-item status-item-live">
+        <span class="status-label">扫描状态</span>
+        <span class="status-value">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="lastScan">--</span>
+        </span>
+        <span class="status-foot">最近一次抓取完成时间</span>
+      </div>
+
+      <div class="status-item">
+        <span class="status-label">新增条目</span>
+        <span class="status-value" id="lastNewCount">0</span>
+        <span class="status-foot">来自最近一次扫描</span>
+      </div>
+
+      <div class="status-item">
+        <span class="status-label">当前条目</span>
+        <span class="status-value" id="totalArticles">0</span>
+        <span class="status-foot">实时库内可见文章数</span>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="top-config">
+        <span class="status-label">扫描目录</span>
+        <input class="status-input path-input" type="text" id="topDataDir" placeholder="C:\Users\PC\Desktop\json-data">
+        <span class="status-label">扫描间隔(分钟)</span>
+        <input class="status-input interval-input" type="number" id="topScanInterval" min="5" step="1" value="5">
+        <button class="config-btn" id="saveConfigBtn" onclick="saveTopConfig()">保存设置</button>
+      </div>
+
+      <button class="config-btn" id="scanBtn" onclick="manualScan()">立即扫描</button>
+      <button class="config-btn" onclick="openAIConfigModal()">AI 翻译配置</button>
+    </section>
+  </header>
+
+  <div class="progress-bar" id="progressBar">
+    <div class="progress-text">
+      <span id="progressMsg">准备开始...</span>
+      <span id="progressPct">0%</span>
     </div>
-    <table>
-      <thead>
-        <tr>
-          <th class="col-check"></th>
-          <th class="col-seq">序号</th>
-          <th>标题</th>
-          <th>发布时间</th>
-          <th>抓取时间</th>
-          <th>来源网站</th>
-          <th class="col-action">操作</th>
-        </tr>
-      </thead>
-      <tbody id="articlesTbody"></tbody>
-    </table>
-    <div class="pagination" id="articlesPagination"></div>
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
   </div>
 
-  <!-- 回收站 -->
-  <div id="trashView" style="display:none">
-    <div class="batch-bar show" id="trashBatchBar">
-      <label><input type="checkbox" id="trashSelectAll" onchange="toggleSelectAll('trash', this.checked)"> 全选</label>
-      <label><input type="checkbox" id="trashInvertSelect" onchange="toggleInvert('trash')"> 反选</label>
-      <span class="selected-count" id="trashSelectedCount">已选 0 条</span>
-      <button class="btn-batch-restore" onclick="batchRestore()">批量恢复</button>
-      <div class="search-box">
-        <input type="text" id="searchTrash" placeholder="搜索标题..." onkeydown="if(event.key==='Enter')searchTrashFn()">
-        <button onclick="searchTrashFn()">查询</button>
-        <button onclick="clearSearchTrash()">清除</button>
+  <section class="workspace">
+    <aside class="signal-rail">
+      <div class="rail-card">
+        <span class="rail-kicker">Live desk</span>
+        <strong class="rail-number" id="heroTotal">0</strong>
+        <p class="rail-detail">当前主列表中可操作的文章数。</p>
       </div>
-    </div>
-    <table>
-      <thead>
-        <tr>
-          <th class="col-check"></th>
-          <th class="col-seq">序号</th>
-          <th>标题</th>
-          <th>发布时间</th>
-          <th>抓取时间</th>
-          <th>来源网站</th>
-          <th>删除时间</th>
-          <th class="col-action">操作</th>
-        </tr>
-      </thead>
-      <tbody id="trashTbody"></tbody>
-    </table>
-    <div class="pagination" id="trashPagination"></div>
-  </div>
+
+      <div class="rail-card rail-card-muted">
+        <span class="rail-kicker">Fresh scan</span>
+        <strong class="rail-number" id="heroNewCount">0</strong>
+        <p class="rail-detail">最近一次抓取新进入系统的条目数。</p>
+      </div>
+
+      <div class="rail-card rail-card-alert">
+        <span class="rail-kicker">Archive bin</span>
+        <strong class="rail-number" id="heroTrash">0</strong>
+        <p class="rail-detail">已删除但仍保留在回收仓的条目数。</p>
+      </div>
+
+      <div class="rail-note">
+        <span class="rail-note-tag">Control Logic</span>
+        <p>左边负责建立态势感，右边负责完成操作。业务行为不变，视觉节奏和阅读顺序被重新设计。</p>
+      </div>
+    </aside>
+
+    <section class="content-stage">
+      <div class="nav-tabs">
+        <div class="nav-tab active" id="tabArticles" onclick="switchTab('articles')">
+          实时条目 <span class="badge-count" id="articleCount">0</span>
+        </div>
+        <div class="nav-tab" id="tabTrash" onclick="switchTab('trash')">
+          回收仓 <span class="badge-count" id="trashCount">0</span>
+        </div>
+      </div>
+
+      <div class="main">
+        <div id="articlesView" class="desk-panel">
+          <div class="view-header">
+            <div>
+              <span class="panel-kicker">Live feed</span>
+              <h2>Articles Queue</h2>
+            </div>
+            <p class="view-note">保留原标题展开、批量删除、搜索和分页逻辑。视觉上把它处理成编辑台而不是普通后台表格。</p>
+          </div>
+
+          <div class="batch-bar show" id="batchBar">
+            <label><input type="checkbox" id="selectAll" onchange="toggleSelectAll('articles', this.checked)"> 全选</label>
+            <label><input type="checkbox" id="invertSelect" onchange="toggleInvert('articles')"> 反选</label>
+            <span class="selected-count" id="selectedCount">已选 0 条</span>
+            <div class="bulk-actions" id="articleBulkActions">
+              <button class="btn-batch-del" onclick="batchDelete()" disabled>批量删除</button>
+            </div>
+            <div class="search-box articles-search-box">
+              <input type="text" id="searchArticles" placeholder="搜索标题关键词" onkeydown="if(event.key==='Enter')searchArticlesFn()">
+              <button onclick="searchArticlesFn()">搜索</button>
+              <button onclick="clearSearchArticles()">清空</button>
+            </div>
+          </div>
+
+          <div class="table-shell">
+            <table>
+              <thead>
+                <tr>
+                  <th class="col-check"></th>
+                  <th class="col-seq">序号</th>
+                  <th>标题</th>
+                  <th>发布日期</th>
+                  <th>抓取时间</th>
+                  <th>来源</th>
+                  <th class="col-action">操作</th>
+                </tr>
+              </thead>
+              <tbody id="articlesTbody"></tbody>
+            </table>
+          </div>
+
+          <div class="pagination" id="articlesPagination"></div>
+        </div>
+
+        <div id="trashView" class="desk-panel" style="display:none">
+          <div class="view-header">
+            <div>
+              <span class="panel-kicker">Archive bin</span>
+              <h2>Trash Timeline</h2>
+            </div>
+            <p class="view-note">按今天、昨天、更早切换时间范围，保留恢复逻辑和翻译标题展开方式。</p>
+          </div>
+
+          <div class="batch-bar show" id="trashBatchBar">
+            <label><input type="checkbox" id="trashSelectAll" onchange="toggleSelectAll('trash', this.checked)"> 全选</label>
+            <label><input type="checkbox" id="trashInvertSelect" onchange="toggleInvert('trash')"> 反选</label>
+            <span class="selected-count" id="trashSelectedCount">已选 0 条</span>
+            <div class="bulk-actions" id="trashBulkActions">
+              <button class="btn-batch-restore" onclick="batchRestore()" disabled>批量恢复</button>
+            </div>
+            <div class="trash-scope-switch">
+              <button class="trash-scope-btn active" data-scope="today" onclick="setTrashScope('today')">今天</button>
+              <button class="trash-scope-btn" data-scope="yesterday" onclick="setTrashScope('yesterday')">昨天</button>
+              <button class="trash-scope-btn" data-scope="earlier" onclick="setTrashScope('earlier')">更早</button>
+            </div>
+            <div class="search-box">
+              <input type="text" id="searchTrash" placeholder="搜索回收仓标题" onkeydown="if(event.key==='Enter')searchTrashFn()">
+              <button onclick="searchTrashFn()">搜索</button>
+              <button onclick="clearSearchTrash()">清空</button>
+            </div>
+          </div>
+
+          <div class="table-shell">
+            <table>
+              <thead>
+                <tr>
+                  <th class="col-check"></th>
+                  <th class="col-seq">序号</th>
+                  <th>标题</th>
+                  <th>发布日期</th>
+                  <th>抓取时间</th>
+                  <th>来源</th>
+                  <th>删除时间</th>
+                  <th class="col-action">操作</th>
+                </tr>
+              </thead>
+              <tbody id="trashTbody"></tbody>
+            </table>
+          </div>
+
+          <div class="pagination" id="trashPagination"></div>
+        </div>
+      </div>
+    </section>
+  </section>
 </div>
 
-<!-- 设置弹窗 -->
-<div class="modal-overlay" id="configModal">
+<div class="modal-overlay" id="aiConfigModal" onclick="if(event.target===this)closeAIConfigModal()">
   <div class="modal">
-    <h3>设置</h3>
-    <label>数据文件夹路径</label>
-    <input type="text" id="cfgDataDir" placeholder="例如: D:\网盘同步\data">
+    <h3>AI 翻译配置</h3>
+    <p class="modal-copy">用于自动翻译英文标题。只改配置展示与输入样式，不改接口和保存逻辑。</p>
+    <label>API URL</label>
+    <input type="text" id="aiApiUrl" placeholder="https://api.deepseek.com/v1/chat/completions">
+    <label>API Key</label>
+    <input type="password" id="aiApiKey" placeholder="sk-xxxxxxxxxxxxxxxx">
+    <label>Model</label>
+    <input type="text" id="aiModel" placeholder="deepseek-chat">
     <div class="modal-actions">
-      <button class="btn-cancel" onclick="closeConfig()">取消</button>
-      <button class="btn-save" onclick="saveConfigForm()">保存</button>
+      <button class="btn-cancel" onclick="closeAIConfigModal()">取消</button>
+      <button class="btn-save" onclick="saveAIConfig()">保存</button>
     </div>
   </div>
 </div>
@@ -266,115 +1447,370 @@ let articlesPage = 1;
 let trashPage = 1;
 let articlesQuery = '';
 let trashQuery = '';
+let trashScope = 'today';
 const PAGE_SIZE = 50;
 
+let aiConfig = null;
+let lastItems = [];
+let lastTotal = 0;
+const transCache = {};
+
+function readViewStateFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get('tab') === 'trash' ? 'trash' : 'articles';
+  const articlePage = Math.max(1, Number.parseInt(params.get('articlePage') || '1', 10) || 1);
+  const trashPageValue = Math.max(1, Number.parseInt(params.get('trashPage') || '1', 10) || 1);
+  const trashScopeValue = ['today', 'yesterday', 'earlier'].includes(params.get('scope')) ? params.get('scope') : 'today';
+  return {
+    tab,
+    articlePage,
+    trashPage: trashPageValue,
+    articleQuery: (params.get('articleQuery') || '').trim(),
+    trashQuery: (params.get('trashQuery') || '').trim(),
+    trashScope: trashScopeValue,
+  };
+}
+
+function writeViewStateToUrl() {
+  const params = new URLSearchParams(window.location.search);
+  params.set('tab', currentTab);
+  params.set('articlePage', String(articlesPage));
+  params.set('trashPage', String(trashPage));
+  if (articlesQuery) params.set('articleQuery', articlesQuery);
+  else params.delete('articleQuery');
+  if (trashQuery) params.set('trashQuery', trashQuery);
+  else params.delete('trashQuery');
+  if (trashScope && trashScope !== 'today') params.set('scope', trashScope);
+  else params.delete('scope');
+  const nextUrl = `${window.location.pathname}?${params.toString()}`;
+  window.history.replaceState({}, '', nextUrl);
+}
+
+function applyViewStateFromUrl() {
+  const state = readViewStateFromUrl();
+  currentTab = state.tab;
+  articlesPage = state.articlePage;
+  trashPage = state.trashPage;
+  articlesQuery = state.articleQuery;
+  trashQuery = state.trashQuery;
+  trashScope = state.trashScope;
+  const articleSearch = document.getElementById('searchArticles');
+  const trashSearch = document.getElementById('searchTrash');
+  if (articleSearch) articleSearch.value = articlesQuery;
+  if (trashSearch) trashSearch.value = trashQuery;
+}
+
 function esc(s) {
-  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function fmtTime(t) {
-  if (!t) return '—';
+  if (!t) return '--';
   return t.replace('T', ' ').substring(0, 19);
 }
 
 function fmtDate(t) {
-  if (!t) return '—';
+  if (!t) return '--';
   return t.substring(0, 10);
 }
 
-// ── 状态栏 ──
+function shortTime(t) {
+  if (!t) return '--:--:--';
+  const normalized = fmtTime(t);
+  return normalized.length >= 19 ? normalized.substring(11, 19) : normalized;
+}
+
+function showProgress(msg, pct) {
+  const bar = document.getElementById('progressBar');
+  bar.classList.add('show');
+  document.getElementById('progressMsg').textContent = msg;
+  document.getElementById('progressPct').textContent = Math.round(pct) + '%';
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+
+function hideProgress() {
+  document.getElementById('progressBar').classList.remove('show');
+}
+
+function updateDashboardCounts(data) {
+  const totalArticles = data.total_articles || 0;
+  const trashCount = data.trash_count || 0;
+  const newCount = data.last_new_count || 0;
+
+  document.getElementById('lastScan').textContent = data.last_scan ? fmtTime(data.last_scan) : '--';
+  document.getElementById('heroLastScan').textContent = data.last_scan ? shortTime(data.last_scan) : '--:--:--';
+  document.getElementById('lastNewCount').textContent = newCount;
+  document.getElementById('totalArticles').textContent = totalArticles;
+  document.getElementById('articleCount').textContent = totalArticles;
+  document.getElementById('trashCount').textContent = trashCount;
+  document.getElementById('heroTotal').textContent = totalArticles;
+  document.getElementById('heroNewCount').textContent = newCount;
+  document.getElementById('heroTrash').textContent = trashCount;
+}
 
 async function refreshStatus() {
   try {
     const r = await fetch('/api/status');
     const d = await r.json();
-    document.getElementById('lastScan').textContent = d.last_scan ? fmtTime(d.last_scan) : '—';
-    document.getElementById('lastNewCount').textContent = d.last_new_count || 0;
-    document.getElementById('totalArticles').textContent = d.total_articles || 0;
-    document.getElementById('articleCount').textContent = d.total_articles || 0;
-    document.getElementById('trashCount').textContent = d.trash_count || 0;
-    document.getElementById('dataDirDisplay').textContent = d.data_dir || '未设置路径';
-  } catch(e) {}
+    updateDashboardCounts(d);
+
+    const dataDirInput = document.getElementById('topDataDir');
+    const intervalInput = document.getElementById('topScanInterval');
+    if (dataDirInput && document.activeElement !== dataDirInput) {
+      dataDirInput.value = d.data_dir || '';
+    }
+    if (intervalInput && document.activeElement !== intervalInput) {
+      intervalInput.value = d.scan_interval_minutes || 5;
+    }
+  } catch (e) {}
 }
 
-// ── 文章列表 ──
+async function loadTranslationsForItems(items) {
+  const files = [...new Set(items.map(a => a.source_file).filter(Boolean))];
+  await Promise.all(files.map(async f => {
+    if (transCache[f]) return;
+    try {
+      const r = await fetch(`/api/translations/${encodeURIComponent(f)}`);
+      transCache[f] = r.ok ? await r.json() : {};
+    } catch (e) {
+      transCache[f] = {};
+    }
+  }));
+}
+
+function getTitleZh(a) {
+  if (!a.source_file || !transCache[a.source_file]) return null;
+  return transCache[a.source_file][a.title] || null;
+}
+
+function getSourceHost(url) {
+  const value = String(url || '').trim();
+  if (!value) return '';
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch (e) {
+    return value.replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '');
+  }
+}
+
+function renderEnglishSourceMeta(article) {
+  const label = getSourceHost(article.source_url) || article.source_site || '';
+  if (!label) return '';
+  if (article.source_url) {
+    return `<a class="english-source-link" href="${esc(article.source_url)}" target="_blank" rel="noopener" title="${esc(article.source_url)}"><span class="english-source-label">来源</span><span class="english-source-value">${esc(article.source_url)}</span></a>`;
+  }
+  return `<span class="english-source-text"><span class="english-source-label">来源</span> ${esc(label)}</span>`;
+}
+
+function renderSourcePill(sourceSite, sourceUrl) {
+  const label = getSourceHost(sourceUrl) || sourceSite || '--';
+  return `<span class="source-pill" title="${esc(sourceUrl || label)}">${esc(label)}</span>`;
+}
 
 async function loadArticles(page) {
   articlesPage = page || 1;
+  writeViewStateToUrl();
   try {
+    showProgress('正在读取文章列表...', 10);
     let url = `/api/articles?page=${articlesPage}&size=${PAGE_SIZE}`;
     if (articlesQuery) url += `&q=${encodeURIComponent(articlesQuery)}`;
     const r = await fetch(url);
     const d = await r.json();
+    lastItems = d.items;
+    lastTotal = d.total;
+
+    showProgress('正在加载标题翻译缓存...', 26);
+    await loadTranslationsForItems(d.items);
+
+    showProgress('渲染文章工作台...', 62);
     renderArticles(d.items, d.total);
-  } catch(e) {
+
+    const toTranslate = d.items.filter(a => a.source_file && isEnglish(a.title) && !getTitleZh(a));
+    if (toTranslate.length) {
+      showProgress(`后台翻译 ${toTranslate.length} 条英文标题...`, 78);
+      await translateAndSave(toTranslate);
+      renderArticles(d.items, d.total);
+    }
+
+    showProgress('文章工作台已更新', 100);
+    setTimeout(hideProgress, 800);
+  } catch (e) {
     document.getElementById('articlesTbody').innerHTML =
-      '<tr><td colspan="7" class="empty-msg">加载失败</td></tr>';
+      '<tr><td colspan="7" class="empty-msg">读取文章失败</td></tr>';
+    hideProgress();
   }
 }
 
 function renderArticles(items, total) {
   const tbody = document.getElementById('articlesTbody');
   if (!items.length) {
-    tbody.innerHTML = '<tr><td colspan="7" class="empty-msg">暂无文章</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-msg">当前没有文章</td></tr>';
     document.getElementById('articlesPagination').innerHTML = '';
     document.getElementById('batchBar').classList.remove('show');
     return;
   }
   document.getElementById('batchBar').classList.add('show');
-  tbody.innerHTML = items.map(a => `
+  tbody.innerHTML = items.map(a => {
+    const zh = getTitleZh(a);
+    const sourceMeta = renderEnglishSourceMeta(a);
+    const titleCell = zh
+      ? `<button type="button" class="title-toggle" onclick="toggleEnglish(${a.seq})"><span class="title-toggle-icon">+</span><span><span class="title-main">${esc(zh)}</span><span class="title-toggle-text">Original</span></span></button>`
+      : `<a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.title)}</a>`;
+    const englishRow = zh
+      ? `<tr class="english-row" id="en-${a.seq}"><td colspan="7"><div class="english-row-content"><div class="english-row-title"><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.title)}</a></div>${sourceMeta}</div></td></tr>`
+      : '';
+    return `
     <tr>
       <td class="col-check"><input type="checkbox" class="row-check" value="${a.seq}" onchange="updateSelectedCount('articles')"></td>
-      <td class="col-seq">${a.seq}</td>
-      <td class="col-title"><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.title)}</a></td>
+      <td class="col-seq">${a.display_seq != null ? a.display_seq : a.seq}</td>
+      <td class="col-title">${titleCell}</td>
       <td class="col-time">${fmtDate(a.published)}</td>
       <td class="col-time">${fmtTime(a.crawled_at)}</td>
-      <td class="col-source">${esc(a.source_site)}</td>
+      <td class="col-source">${renderSourcePill(a.source_site, a.source_url)}</td>
       <td class="col-action"><button class="btn-del" onclick="deleteArticle(${a.seq})">删除</button></td>
-    </tr>
-  `).join('');
+    </tr>${englishRow}`;
+  }).join('');
   renderPagination('articlesPagination', total, articlesPage, 'loadArticles');
+  syncBulkActionState('articles');
 }
 
-// ── 回收站 ──
+function toggleEnglish(seq, trigger) {
+  const row = document.getElementById(`en-${seq}`);
+  if (!row) return;
+  row.classList.toggle('show');
+  const currentTrigger = trigger || row.previousElementSibling.querySelector('.title-toggle');
+  if (currentTrigger) currentTrigger.classList.toggle('expanded');
+}
+
+function isEnglish(text) {
+  if (!text) return false;
+  const en = text.match(/[a-zA-Z]/g) || [];
+  const zh = text.match(/[\u4e00-\u9fa5]/g) || [];
+  return en.length > zh.length && en.length > 10;
+}
+
+async function translateAndSave(toTranslate) {
+  if (!toTranslate.length) return;
+
+  const titles = toTranslate.map(a => a.title);
+  try {
+    showProgress(`调用翻译接口处理 ${titles.length} 条标题...`, 58);
+    const res = await fetch('/api/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ titles }),
+    });
+    if (!res.ok) {
+      showProgress('翻译接口暂时不可用', 40);
+      return;
+    }
+    const data = await res.json();
+
+    showProgress('保存翻译缓存...', 82);
+    const byFile = {};
+    data.results.forEach((zh, i) => {
+      const a = toTranslate[i];
+      if (zh && zh !== a.title) {
+        if (!transCache[a.source_file]) transCache[a.source_file] = {};
+        transCache[a.source_file][a.title] = zh;
+        if (!byFile[a.source_file]) byFile[a.source_file] = {};
+        byFile[a.source_file][a.title] = zh;
+      }
+    });
+
+    await Promise.all(Object.entries(byFile).map(([file, dict]) =>
+      fetch(`/api/translations/${encodeURIComponent(file)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dict),
+      })
+    ));
+    showProgress('翻译缓存已更新', 95);
+  } catch (e) {
+    console.warn('翻译失败:', e);
+    showProgress('翻译失败: ' + e.message, 40);
+  }
+}
 
 async function loadTrash(page) {
   trashPage = page || 1;
+  writeViewStateToUrl();
   try {
-    let url = `/api/trash?page=${trashPage}&size=${PAGE_SIZE}`;
+    let url = `/api/trash?page=${trashPage}&size=${PAGE_SIZE}&scope=${encodeURIComponent(trashScope)}`;
     if (trashQuery) url += `&q=${encodeURIComponent(trashQuery)}`;
     const r = await fetch(url);
     const d = await r.json();
+    await loadTranslationsForItems(d.items);
     renderTrash(d.items, d.total);
-  } catch(e) {
+    const toTranslate = d.items.filter(a => a.source_file && isEnglish(a.title) && !getTitleZh(a));
+    if (toTranslate.length) {
+      await translateAndSave(toTranslate);
+      renderTrash(d.items, d.total);
+    }
+    trashScope = d.scope || trashScope;
+    updateTrashScopeButtons();
+  } catch (e) {
     document.getElementById('trashTbody').innerHTML =
-      '<tr><td colspan="8" class="empty-msg">加载失败</td></tr>';
+      '<tr><td colspan="8" class="empty-msg">读取回收仓失败</td></tr>';
   }
 }
 
 function renderTrash(items, total) {
   const tbody = document.getElementById('trashTbody');
   if (!items.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty-msg">回收站为空</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-msg">这个时间范围内没有回收条目</td></tr>';
     document.getElementById('trashPagination').innerHTML = '';
     return;
   }
-  tbody.innerHTML = items.map(a => `
+  tbody.innerHTML = items.map(a => {
+    const zh = getTitleZh(a);
+    const sourceMeta = renderEnglishSourceMeta(a);
+    const titleCell = zh
+      ? `<button type="button" class="title-toggle" onclick="toggleEnglish(${a.seq})"><span class="title-toggle-icon">+</span><span><span class="title-main">${esc(zh)}</span><span class="title-toggle-text">Original</span></span></button>`
+      : `<a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.title)}</a>`;
+    const englishRow = zh
+      ? `<tr class="english-row" id="en-${a.seq}"><td colspan="8"><div class="english-row-content"><div class="english-row-title"><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.title)}</a></div>${sourceMeta}</div></td></tr>`
+      : '';
+    return `
     <tr>
       <td class="col-check"><input type="checkbox" class="trash-check" value="${a.seq}" onchange="updateSelectedCount('trash')"></td>
-      <td class="col-seq">${a.seq}</td>
-      <td class="col-title"><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.title)}</a></td>
+      <td class="col-seq">${a.display_seq != null ? a.display_seq : a.seq}</td>
+      <td class="col-title">${titleCell}</td>
       <td class="col-time">${fmtDate(a.published)}</td>
       <td class="col-time">${fmtTime(a.crawled_at)}</td>
-      <td class="col-source">${esc(a.source_site)}</td>
+      <td class="col-source">${renderSourcePill(a.source_site, a.source_url)}</td>
       <td class="col-time">${fmtTime(a.deleted_at)}</td>
       <td class="col-action"><button class="btn-restore" onclick="restoreArticle(${a.seq})">恢复</button></td>
-    </tr>
-  `).join('');
+    </tr>${englishRow}`;
+  }).join('');
   renderPagination('trashPagination', total, trashPage, 'loadTrash');
+  syncBulkActionState('trash');
 }
 
-// ── 分页 ──
+function trashScopeLabel(scope) {
+  if (scope === 'today') return '今天';
+  if (scope === 'yesterday') return '昨天';
+  if (scope === 'earlier') return '更早';
+  return '全部';
+}
+
+function updateTrashScopeButtons() {
+  document.querySelectorAll('.trash-scope-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.scope === trashScope);
+  });
+}
+
+function setTrashScope(scope) {
+  if (trashScope === scope) return;
+  trashScope = scope;
+  trashPage = 1;
+  updateTrashScopeButtons();
+  loadTrash(1);
+}
 
 function renderPagination(containerId, total, currentPage, fnName) {
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -384,14 +1820,13 @@ function renderPagination(containerId, total, currentPage, fnName) {
   }
   document.getElementById(containerId).innerHTML = `
     <button ${currentPage <= 1 ? 'disabled' : ''} onclick="${fnName}(${currentPage - 1})">上一页</button>
-    <span class="page-info">${currentPage} / ${totalPages}（共 ${total} 条）</span>
+    <span class="page-info">${currentPage} / ${totalPages} · ${total} 条</span>
     <button ${currentPage >= totalPages ? 'disabled' : ''} onclick="${fnName}(${currentPage + 1})">下一页</button>
   `;
 }
 
-// ── 操作 ──
-
 async function deleteArticle(seq) {
+  if (!confirm(`确认删除这篇文章吗？`)) return;
   await fetch(`/api/articles/${seq}/delete`, { method: 'POST' });
   loadArticles(articlesPage);
   refreshStatus();
@@ -403,49 +1838,66 @@ async function restoreArticle(seq) {
   refreshStatus();
 }
 
-// ── Tab 切换 ──
-
 function switchTab(tab) {
   currentTab = tab;
   document.getElementById('tabArticles').className = 'nav-tab' + (tab === 'articles' ? ' active' : '');
   document.getElementById('tabTrash').className = 'nav-tab' + (tab === 'trash' ? ' active' : '');
   document.getElementById('articlesView').style.display = tab === 'articles' ? '' : 'none';
   document.getElementById('trashView').style.display = tab === 'trash' ? '' : 'none';
-  if (tab === 'articles') loadArticles(1);
-  else loadTrash(1);
+  writeViewStateToUrl();
+  if (tab === 'articles') loadArticles(articlesPage);
+  else loadTrash(trashPage);
 }
 
 async function manualScan() {
   const btn = document.getElementById('scanBtn');
   btn.disabled = true;
-  btn.textContent = '扫描中...';
+  btn.textContent = '正在扫描...';
   document.getElementById('statusDot').classList.add('scanning');
   try {
+    showProgress('触发手动扫描...', 8);
     await fetch('/api/scan', { method: 'POST' });
     await refreshStatus();
-    if (currentTab === 'articles') loadArticles(1);
-    else loadTrash(1);
-  } catch(e) {}
+    if (currentTab === 'articles') await loadArticles(1);
+    else await loadTrash(1);
+  } catch (e) {
+    hideProgress();
+  }
   btn.disabled = false;
   btn.textContent = '立即扫描';
   document.getElementById('statusDot').classList.remove('scanning');
 }
 
-// ── 批量选择/删除/恢复 ──
-
-function _checkClass(view) { return view === 'trash' ? '.trash-check' : '.row-check'; }
+function _checkClass(view) {
+  return view === 'trash' ? '.trash-check' : '.row-check';
+}
 
 function toggleSelectAll(view, checked) {
-  document.querySelectorAll(_checkClass(view)).forEach(cb => cb.checked = checked);
+  document.querySelectorAll(_checkClass(view)).forEach(cb => {
+    cb.checked = checked;
+  });
   updateSelectedCount(view);
 }
 
 function toggleInvert(view) {
-  document.querySelectorAll(_checkClass(view)).forEach(cb => cb.checked = !cb.checked);
+  document.querySelectorAll(_checkClass(view)).forEach(cb => {
+    cb.checked = !cb.checked;
+  });
   const prefix = view === 'trash' ? 'trash' : '';
   const invertEl = document.getElementById(prefix ? 'trashInvertSelect' : 'invertSelect');
   if (invertEl) invertEl.checked = false;
   updateSelectedCount(view);
+}
+
+function syncBulkActionState(view) {
+  const checkedCount = document.querySelectorAll(`${_checkClass(view)}:checked`).length;
+  const actions = document.getElementById(view === 'trash' ? 'trashBulkActions' : 'articleBulkActions');
+  if (!actions) return;
+  const isDisabled = checkedCount === 0;
+  actions.classList.toggle('is-disabled', isDisabled);
+  actions.querySelectorAll('button').forEach(btn => {
+    btn.disabled = isDisabled;
+  });
 }
 
 function updateSelectedCount(view) {
@@ -460,12 +1912,13 @@ function updateSelectedCount(view) {
     document.getElementById('selectedCount').textContent = `已选 ${checked.length} 条`;
     document.getElementById('selectAll').checked = allChecked;
   }
+  syncBulkActionState(view);
 }
 
 async function batchDelete() {
   const seqs = [...document.querySelectorAll('.row-check:checked')].map(cb => Number(cb.value));
   if (!seqs.length) return;
-  if (!confirm(`确定删除选中的 ${seqs.length} 条文章？`)) return;
+  if (!confirm(`确认批量删除 ${seqs.length} 条文章吗？`)) return;
   await fetch('/api/articles/batch-delete', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -478,7 +1931,7 @@ async function batchDelete() {
 async function batchRestore() {
   const seqs = [...document.querySelectorAll('.trash-check:checked')].map(cb => Number(cb.value));
   if (!seqs.length) return;
-  if (!confirm(`确定恢复选中的 ${seqs.length} 条文章？`)) return;
+  if (!confirm(`确认批量恢复 ${seqs.length} 条文章吗？`)) return;
   await fetch('/api/trash/batch-restore', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -488,57 +1941,155 @@ async function batchRestore() {
   refreshStatus();
 }
 
-// ── 搜索 ──
-
 function searchArticlesFn() {
   articlesQuery = document.getElementById('searchArticles').value.trim();
+  articlesPage = 1;
   loadArticles(1);
 }
+
 function clearSearchArticles() {
   articlesQuery = '';
+  articlesPage = 1;
   document.getElementById('searchArticles').value = '';
   loadArticles(1);
 }
+
 function searchTrashFn() {
   trashQuery = document.getElementById('searchTrash').value.trim();
+  trashPage = 1;
   loadTrash(1);
 }
+
 function clearSearchTrash() {
   trashQuery = '';
+  trashPage = 1;
   document.getElementById('searchTrash').value = '';
   loadTrash(1);
 }
 
-// ── 设置弹窗 ──
-
-async function openConfig() {
-  const r = await fetch('/api/config');
-  const cfg = await r.json();
-  document.getElementById('cfgDataDir').value = cfg.data_dir || '';
-  document.getElementById('configModal').classList.add('show');
+async function loadAIConfig() {
+  try {
+    const res = await fetch('/api/ai-config');
+    const data = await res.json();
+    if (data.api_url && data.api_key && data.model) {
+      aiConfig = data;
+    }
+  } catch (e) {}
 }
 
-function closeConfig() {
-  document.getElementById('configModal').classList.remove('show');
+async function openAIConfigModal() {
+  const modal = document.getElementById('aiConfigModal');
+  modal.classList.add('show');
+  try {
+    const res = await fetch('/api/ai-config');
+    const data = await res.json();
+    document.getElementById('aiApiUrl').value = data.api_url || '';
+    document.getElementById('aiApiKey').value = data.api_key || '';
+    document.getElementById('aiModel').value = data.model || '';
+  } catch (e) {}
+  setTimeout(() => document.getElementById('aiApiUrl').focus(), 50);
 }
 
-async function saveConfigForm() {
-  const dataDir = document.getElementById('cfgDataDir').value.trim();
-  const r = await fetch('/api/config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ data_dir: dataDir }),
-  });
-  const d = await r.json();
-  if (d.error) { alert(d.error); return; }
-  closeConfig();
-  refreshStatus();
+function closeAIConfigModal() {
+  document.getElementById('aiConfigModal').classList.remove('show');
 }
 
-// ── 初始化 ──
+async function saveAIConfig() {
+  const apiUrl = document.getElementById('aiApiUrl').value.trim();
+  const apiKey = document.getElementById('aiApiKey').value.trim();
+  const model = document.getElementById('aiModel').value.trim();
+  if (!apiUrl || !apiKey || !model) {
+    alert('请完整填写 AI 翻译配置');
+    return;
+  }
+  try {
+    const res = await fetch('/api/ai-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_url: apiUrl, api_key: apiKey, model: model }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.error || '保存失败');
+      return;
+    }
+    aiConfig = { api_url: apiUrl, api_key: apiKey, model: model };
+    alert('AI 翻译配置已保存');
+    closeAIConfigModal();
+  } catch (e) {
+    alert('保存失败: ' + e.message);
+  }
+}
 
+async function loadTopConfig() {
+  try {
+    const r = await fetch('/api/config');
+    const cfg = await r.json();
+    document.getElementById('topDataDir').value = cfg.data_dir || '';
+    document.getElementById('topScanInterval').value = cfg.scan_interval_minutes || 5;
+  } catch (e) {}
+}
+
+function applyTopConfigLabels() {
+  const labels = document.querySelectorAll('.top-config .status-label');
+  if (labels[0]) labels[0].textContent = '扫描目录';
+  if (labels[1]) labels[1].textContent = '扫描间隔(分钟)';
+
+  const dataDirInput = document.getElementById('topDataDir');
+  if (dataDirInput) {
+    dataDirInput.placeholder = 'C:\\Users\\PC\\Desktop\\json-data';
+  }
+
+  const saveBtn = document.getElementById('saveConfigBtn');
+  if (saveBtn && saveBtn.textContent !== '保存中...') {
+    saveBtn.textContent = '保存设置';
+  }
+}
+
+async function saveTopConfig() {
+  const dataDir = document.getElementById('topDataDir').value.trim();
+  const interval = Number.parseInt(document.getElementById('topScanInterval').value, 10);
+  if (!Number.isInteger(interval) || interval < 5) {
+    alert('扫描间隔不能小于 5 分钟');
+    return;
+  }
+
+  const btn = document.getElementById('saveConfigBtn');
+  btn.disabled = true;
+  btn.textContent = '保存中...';
+  try {
+    const r = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data_dir: dataDir, scan_interval_minutes: interval }),
+    });
+    const d = await r.json();
+    if (d.error) {
+      alert(d.error);
+      return;
+    }
+    await refreshStatus();
+  } catch (e) {
+    alert('保存失败: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '保存设置';
+  }
+}
+
+window.addEventListener('popstate', () => {
+  applyViewStateFromUrl();
+  updateTrashScopeButtons();
+  switchTab(currentTab);
+});
+
+applyViewStateFromUrl();
+loadTopConfig();
+applyTopConfigLabels();
+updateTrashScopeButtons();
 refreshStatus();
-loadArticles(1);
+switchTab(currentTab);
+loadAIConfig();
 setInterval(refreshStatus, 60000);
 </script>
 </body>

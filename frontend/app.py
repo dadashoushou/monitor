@@ -5,8 +5,10 @@ OpenMonitor 前端阅读器
 """
 import json
 import threading
+import requests as http_requests
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from flask import Flask, jsonify, request, render_template
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -16,6 +18,13 @@ app = Flask(__name__)
 BASE_DIR = Path(__file__).parent
 CONFIG_FILE = BASE_DIR / 'config.json'
 STATE_FILE = BASE_DIR / 'state.json'
+TRANSLATIONS_DIR = BASE_DIR / 'translations'
+MIN_SCAN_INTERVAL_MINUTES = 5
+DEFAULT_CONFIG = {
+    'data_dir': '',
+    'scan_interval_minutes': MIN_SCAN_INTERVAL_MINUTES,
+    'port': 5001,
+}
 
 state_lock = threading.Lock()
 
@@ -23,14 +32,26 @@ state_lock = threading.Lock()
 
 def load_config() -> dict:
     if not CONFIG_FILE.exists():
-        return {'data_dir': '', 'scan_interval_minutes': 5, 'port': 5001}
+        return dict(DEFAULT_CONFIG)
     with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-        return json.load(f)
+        cfg = dict(DEFAULT_CONFIG)
+        cfg.update(json.load(f))
+        return cfg
 
 
 def save_config(cfg: dict):
     with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
+
+
+def _parse_scan_interval_minutes(raw_value) -> int:
+    try:
+        minutes = int(raw_value)
+    except (TypeError, ValueError):
+        raise ValueError('扫描间隔必须是整数分钟')
+    if minutes < MIN_SCAN_INTERVAL_MINUTES:
+        raise ValueError(f'扫描间隔不能小于 {MIN_SCAN_INTERVAL_MINUTES} 分钟')
+    return minutes
 
 
 def load_state() -> dict:
@@ -47,7 +68,7 @@ def save_state(st: dict):
 
 # ── JSON 文件扫描 ──────────────────────────────────────────
 
-def _parse_json_file(filepath: Path) -> list[dict]:
+def _parse_json_file(filepath: Path) -> List[Dict[str, Any]]:
     """解析后端输出的 JSON 文件，返回统一格式的 article 列表"""
     with open(filepath, 'r', encoding='utf-8') as f:
         data = json.load(f)
@@ -109,6 +130,7 @@ def scan_data_dir():
             continue
         for item in items:
             item['seq'] = next_seq
+            item['source_file'] = filepath.name
             item['deleted'] = False
             item['deleted_at'] = None
             st['articles'].append(item)
@@ -145,6 +167,49 @@ def cleanup_trash():
 
 # ── API 路由 ───────────────────────────────────────────────
 
+def _normalize_trash_scope(raw_scope: Optional[str]) -> str:
+    scope = (raw_scope or 'today').strip().lower()
+    return scope if scope in {'today', 'yesterday', 'earlier'} else 'today'
+
+
+def _parse_deleted_at(value: Optional[str]):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _filter_deleted_articles_by_scope(
+    articles: List[Dict[str, Any]], scope: str
+) -> List[Dict[str, Any]]:
+    scope = _normalize_trash_scope(scope)
+    today = datetime.now().date()
+    yesterday = today - timedelta(days=1)
+    filtered = []
+
+    for article in articles:
+        if not article.get('deleted'):
+            continue
+
+        deleted_at = _parse_deleted_at(article.get('deleted_at'))
+        if deleted_at is None:
+            if scope == 'earlier':
+                filtered.append(article)
+            continue
+
+        deleted_date = deleted_at.date()
+        if scope == 'today' and deleted_date == today:
+            filtered.append(article)
+        elif scope == 'yesterday' and deleted_date == yesterday:
+            filtered.append(article)
+        elif scope == 'earlier' and deleted_date < yesterday:
+            filtered.append(article)
+
+    return filtered
+
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -166,7 +231,11 @@ def get_articles():
 
     total = len(active)
     start = (page - 1) * size
-    items = active[start:start + size]
+    items = []
+    for offset, article in enumerate(active[start:start + size], start=1):
+        item = dict(article)
+        item['display_seq'] = start + offset
+        items.append(item)
 
     return jsonify({'items': items, 'total': total, 'page': page, 'size': size})
 
@@ -176,20 +245,25 @@ def get_trash():
     page = request.args.get('page', 1, type=int)
     size = request.args.get('size', 50, type=int)
     q = request.args.get('q', '').strip()
+    scope = _normalize_trash_scope(request.args.get('scope', 'today'))
 
     with state_lock:
         st = load_state()
 
-    deleted = [a for a in st['articles'] if a.get('deleted')]
+    deleted = _filter_deleted_articles_by_scope(st['articles'], scope)
     if q:
         deleted = [a for a in deleted if q in a.get('title', '')]
     deleted.sort(key=lambda a: a.get('deleted_at') or '', reverse=True)
 
     total = len(deleted)
     start = (page - 1) * size
-    items = deleted[start:start + size]
+    items = []
+    for offset, article in enumerate(deleted[start:start + size], start=1):
+        item = dict(article)
+        item['display_seq'] = start + offset
+        items.append(item)
 
-    return jsonify({'items': items, 'total': total, 'page': page, 'size': size})
+    return jsonify({'items': items, 'total': total, 'page': page, 'size': size, 'scope': scope})
 
 
 @app.route('/api/articles/batch-delete', methods=['POST'])
@@ -274,6 +348,7 @@ def get_status():
         'total_articles': active_count,
         'trash_count': trash_count,
         'data_dir': cfg.get('data_dir', ''),
+        'scan_interval_minutes': cfg.get('scan_interval_minutes', MIN_SCAN_INTERVAL_MINUTES),
     })
 
 
@@ -292,13 +367,122 @@ def get_config():
 def update_config():
     data = request.get_json()
     cfg = load_config()
+    scan_interval_minutes = None
     if 'data_dir' in data:
         raw = str(data['data_dir']).strip()
         if raw and not Path(raw).exists():
             return jsonify({'error': '路径不存在'}), 400
         cfg['data_dir'] = raw
+    if 'scan_interval_minutes' in data:
+        try:
+            scan_interval_minutes = _parse_scan_interval_minutes(data['scan_interval_minutes'])
+        except ValueError as exc:
+            return jsonify({'error': str(exc)}), 400
+        cfg['scan_interval_minutes'] = scan_interval_minutes
     save_config(cfg)
+    if scan_interval_minutes is not None:
+        refresh_scan_schedule(scan_interval_minutes)
     return jsonify(cfg)
+
+
+@app.route('/api/ai-config', methods=['GET'])
+def get_ai_config():
+    cfg = load_config()
+    ai = cfg.get('ai', {})
+    return jsonify({
+        'api_url': ai.get('api_url', ''),
+        'api_key': ai.get('api_key', ''),
+        'model': ai.get('model', ''),
+    })
+
+
+@app.route('/api/ai-config', methods=['POST'])
+def update_ai_config():
+    data = request.get_json()
+    api_url = str(data.get('api_url', '')).strip()
+    api_key = str(data.get('api_key', '')).strip()
+    model = str(data.get('model', '')).strip()
+    if not api_url or not api_key or not model:
+        return jsonify({'error': '请填写完整的 AI 配置'}), 400
+    cfg = load_config()
+    cfg['ai'] = {'api_url': api_url, 'api_key': api_key, 'model': model}
+    save_config(cfg)
+    return jsonify(cfg['ai'])
+
+
+@app.route('/api/translate', methods=['POST'])
+def translate():
+    cfg = load_config()
+    ai = cfg.get('ai', {})
+    if not ai.get('api_url') or not ai.get('api_key') or not ai.get('model'):
+        return jsonify({'error': '未配置 AI'}), 400
+
+    data = request.get_json()
+    titles = data.get('titles', [])
+    if not titles:
+        return jsonify({'results': []})
+
+    api_url = ai['api_url'].rstrip('/')
+    if not api_url.endswith('/chat/completions'):
+        if api_url.endswith('/v1'):
+            api_url += '/chat/completions'
+        else:
+            api_url += '/v1/chat/completions'
+
+    results = []
+    for title in titles:
+        try:
+            resp = http_requests.post(
+                api_url,
+                json={
+                    'model': ai['model'],
+                    'messages': [
+                        {'role': 'system', 'content': '你是一个专业的翻译助手，请将用户提供的英文标题翻译成中文。只返回翻译结果，不要添加任何解释。'},
+                        {'role': 'user', 'content': '请翻译以下标题：' + title},
+                    ],
+                    'temperature': 0.3,
+                },
+                headers={
+                    'Authorization': f'Bearer {ai["api_key"]}',
+                    'Content-Type': 'application/json',
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+            translated = resp.json()['choices'][0]['message']['content'].strip()
+            results.append(translated)
+        except Exception:
+            results.append(title)
+
+    return jsonify({'results': results})
+
+
+# ── 翻译文件持久化 ───────────────────────────────────────────
+
+@app.route('/api/translations/<path:filename>')
+def get_translations(filename):
+    safe_name = Path(filename).name
+    trans_file = TRANSLATIONS_DIR / f'trans_{safe_name}'
+    if not trans_file.exists():
+        return jsonify({})
+    with open(trans_file, 'r', encoding='utf-8') as f:
+        return jsonify(json.load(f))
+
+
+@app.route('/api/translations/<path:filename>', methods=['POST'])
+def save_translations(filename):
+    safe_name = Path(filename).name
+    TRANSLATIONS_DIR.mkdir(exist_ok=True)
+    trans_file = TRANSLATIONS_DIR / f'trans_{safe_name}'
+    new_data = request.get_json() or {}
+    existing = {}
+    if trans_file.exists():
+        with open(trans_file, 'r', encoding='utf-8') as f:
+            existing = json.load(f)
+    existing.update(new_data)
+    with open(trans_file, 'w', encoding='utf-8') as f:
+        json.dump(existing, f, ensure_ascii=False, indent=2)
+    return jsonify({'ok': True, 'count': len(new_data)})
 
 
 # ── 启动 ───────────────────────────────────────────────────
@@ -306,9 +490,16 @@ def update_config():
 scheduler = BackgroundScheduler()
 
 
+def refresh_scan_schedule(minutes: int):
+    if scheduler.get_job('scan_job'):
+        scheduler.reschedule_job('scan_job', trigger='interval', minutes=minutes)
+    elif scheduler.running:
+        scheduler.add_job(scan_data_dir, 'interval', minutes=minutes, id='scan_job')
+
+
 def _start_scheduler():
     cfg = load_config()
-    minutes = cfg.get('scan_interval_minutes', 5)
+    minutes = cfg.get('scan_interval_minutes', MIN_SCAN_INTERVAL_MINUTES)
     scheduler.add_job(scan_data_dir, 'interval', minutes=minutes, id='scan_job')
     scheduler.add_job(cleanup_trash, 'cron', day_of_week='mon', hour=0, minute=0, id='cleanup_job')
     scheduler.start()

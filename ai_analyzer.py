@@ -80,7 +80,10 @@ def analyze_page(html: str, url: str, ai_config: dict,
 
     api_url = ai_config['api_url'].rstrip('/')
     if not api_url.endswith('/chat/completions'):
-        api_url += '/chat/completions'
+        if api_url.endswith('/v1'):
+            api_url += '/chat/completions'
+        else:
+            api_url += '/v1/chat/completions'
 
     resp = requests.post(
         api_url,
