@@ -51,7 +51,7 @@ loadAIConfig();            // 加载前端 AI 配置
 GET /api/config
   ↓
 返回: {
-  crawl_interval_hours: 6,
+  crawl_interval_hours: 1,
   data_dir: "D:/data",
   max_article_age_days: 0
 }
@@ -316,7 +316,7 @@ GET /api/analyze/result
 ### config.json
 ```json
 {
-  "crawl_interval_hours": 6,
+  "crawl_interval_hours": 1,
   "data_dir": "./data",
   "max_article_age_days": 3,
   "max_items": 200,

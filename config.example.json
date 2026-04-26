@@ -1,6 +1,7 @@
 {
-  "crawl_interval_hours": 6,
+  "crawl_interval_hours": 1,
   "data_dir": "",
+  "mirror_data_dir": "",
   "max_items": 200,
   "max_article_age_days": 0,
   "ai": {

@@ -3,22 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OpenMonitor 管理</title>
+<title>OpenMonitor 管理台</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #1a1a1a; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f5f5; color: #1a1a1a; }
   .header { background: #fff; border-bottom: 1px solid #e5e5e5; padding: 12px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
   .header h1 { font-size: 16px; font-weight: 600; }
   .header-brand { display: flex; align-items: baseline; gap: 10px; min-width: 180px; }
   .header-group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .header-primary { margin-left: auto; }
-  .header-secondary { width: 100%; padding-top: 6px; border-top: 1px solid #f0f0f0; }
-  .btn { padding: 7px 14px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; transition: opacity .15s; }
+  .header-primary { margin-left: auto; justify-content: flex-end; }
+  .header-secondary { width: 100%; padding-top: 8px; border-top: 1px solid #f0f0f0; }
+  .btn { min-height: 38px; min-width: 108px; padding: 7px 14px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; transition: opacity .15s, background-color .15s, border-color .15s; }
   .btn:hover { opacity: .85; }
   .btn-primary { background: #1a1a1a; color: #fff; }
   .btn-secondary { background: #fff; color: #1a1a1a; border: 1px solid #d4d4d4; }
   .btn-danger { background: #ef4444; color: #fff; }
-  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .btn-warning { background: #f59e0b; color: #fff; }
+  .btn-ai { background: #7c3aed; color: #fff; }
+  .btn-sm { min-height: 34px; min-width: 82px; padding: 4px 10px; font-size: 12px; }
   .btn:disabled { opacity: .4; cursor: not-allowed; }
   .main { max-width: 1400px; margin: 24px auto; padding: 0 24px; }
   .card { background: #fff; border-radius: 8px; border: 1px solid #e5e5e5; overflow: hidden; }
@@ -34,14 +36,31 @@
   .badge-timeout { background: #fee2e2; color: #dc2626; }
   .badge-error { background: #fee2e2; color: #dc2626; }
   .badge-checking { background: #dbeafe; color: #2563eb; }
+  .badge-crawling { background: #dbeafe; color: #2563eb; }
+  .badge-auto { background: #f3f4f6; color: #6b7280; }
+  .badge-html { background: #dbeafe; color: #2563eb; }
+  .badge-js { background: #ede9fe; color: #7c3aed; }
+  .badge-stealth { background: #ffedd5; color: #c2410c; }
+  .badge-paused { background: #fee2e2; color: #dc2626; }
   .url-cell { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .url-cell a { color: #2563eb; text-decoration: none; }
   .url-cell a:hover { text-decoration: underline; }
-  .actions { display: flex; gap: 6px; white-space: nowrap; }
-  .actions-stack { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+  .mode-stack { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+  .actions { display: grid; grid-template-columns: repeat(4, minmax(82px, 1fr)); gap: 8px; white-space: nowrap; }
+  .actions-stack { display: flex; flex-direction: column; gap: 8px; min-width: 372px; }
+  .actions .btn { width: 100%; }
   .actions-primary .btn { border-color: #d4d4d4; }
-  .actions-secondary .btn-sm { opacity: .88; }
+  .actions-secondary .btn-sm { opacity: .92; }
+  .action-placeholder { visibility: hidden; pointer-events: none; }
   .status-bar { background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 8px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; font-size: 13px; color: #555; }
+  .dashboard-grid { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; align-items: start; }
+  .stats-card { padding: 18px; }
+  .stats-card h2 { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: #222; }
+  .stats-list { display: grid; gap: 14px; }
+  .stats-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+  .stats-label-card { font-size: 13px; color: #666; }
+  .stats-value-card { font-size: 28px; line-height: 1; font-weight: 700; color: #111; font-variant-numeric: tabular-nums; }
+  .stats-note { margin-top: 18px; font-size: 12px; color: #888; line-height: 1.5; }
   .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; flex-shrink: 0; }
   .status-dot.busy { background: #3b82f6; animation: pulse 1.2s infinite; }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
@@ -52,37 +71,18 @@
   .status-progress { height: 3px; background: #e5e5e5; border-radius: 2px; overflow: hidden; width: 140px; display: none; }
   .status-progress.active { display: block; }
   .status-fill { height: 100%; background: #1a1a1a; transition: width .3s; }
-  /* Modal */
   .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none; align-items: center; justify-content: center; z-index: 100; }
   .overlay.open { display: flex; }
   .modal { background: #fff; border-radius: 10px; padding: 24px; width: 420px; max-width: 95vw; }
   .modal h2 { font-size: 15px; font-weight: 600; margin-bottom: 18px; }
   .field { margin-bottom: 14px; }
   .field label { display: block; font-size: 12px; font-weight: 500; color: #555; margin-bottom: 5px; }
-  .field input, .field textarea { width: 100%; padding: 8px 10px; border: 1px solid #d4d4d4; border-radius: 6px; font-size: 13px; outline: none; }
-  .field input:focus, .field textarea:focus { border-color: #1a1a1a; }
+  .field input, .field textarea, .field select { width: 100%; padding: 8px 10px; border: 1px solid #d4d4d4; border-radius: 6px; font-size: 13px; outline: none; background: #fff; }
+  .field input:focus, .field textarea:focus, .field select:focus { border-color: #1a1a1a; }
   .field textarea { resize: vertical; min-height: 60px; }
   .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
   .empty { text-align: center; padding: 48px; color: #999; font-size: 13px; }
-  /* 抓取相关 */
-  .badge-crawling { background: #dbeafe; color: #2563eb; }
-  /* 抓取模式 badge */
-  .badge-auto    { background: #f3f4f6; color: #6b7280; }
-  .badge-html    { background: #dbeafe; color: #2563eb; }
-  .badge-js      { background: #ede9fe; color: #7c3aed; }
-  .badge-stealth { background: #ffedd5; color: #c2410c; }
-  .field select {
-    width: 100%;
-    padding: 8px 10px;
-    border: 1px solid #d4d4d4;
-    border-radius: 6px;
-    font-size: 13px;
-    outline: none;
-    background: #fff;
-    cursor: pointer;
-  }
-  .field select:focus { border-color: #1a1a1a; }
-  select.interval-select { padding: 6px 10px; border-radius: 6px; border: 1px solid #d4d4d4; font-size: 13px; cursor: pointer; }
+  select.interval-select { min-height: 38px; padding: 6px 10px; border-radius: 8px; border: 1px solid #d4d4d4; font-size: 13px; cursor: pointer; background: #fff; }
   .history-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, .2); display: none; z-index: 90; }
   .history-backdrop.open { display: block; }
   .history-drawer { position: fixed; top: 0; right: 0; width: 420px; max-width: 92vw; height: 100vh; background: #fff; border-left: 1px solid #e5e5e5; box-shadow: -18px 0 40px rgba(15, 23, 42, .12); transform: translateX(100%); transition: transform .2s ease; z-index: 95; display: flex; flex-direction: column; }
@@ -96,16 +96,21 @@
   .article-list { padding: 8px 14px 14px; background: #fafafa; }
   .article-list a { display: block; font-size: 12px; color: #2563eb; text-decoration: none; padding: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .article-list a:hover { text-decoration: underline; }
-  .translate-status { padding: 8px 14px; background: #f0f9ff; border-top: 1px solid #e5e5e5; font-size: 12px; color: #2563eb; display: flex; align-items: center; gap: 8px; }
-  .translate-status .spinner { width: 12px; height: 12px; border: 2px solid #e5e5e5; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.8s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .data-dir-input { padding: 6px 10px; border-radius: 6px; border: 1px solid #d4d4d4; font-size: 13px; width: 260px; outline: none; }
+  .data-dir-input { min-height: 38px; padding: 6px 10px; border-radius: 8px; border: 1px solid #d4d4d4; font-size: 13px; width: 260px; outline: none; }
   .data-dir-input:focus { border-color: #1a1a1a; }
   .data-dir-input.saved { border-color: #16a34a; }
   .data-dir-input.error { border-color: #ef4444; }
-  .btn-ai { background: #7c3aed; color: #fff; }
   .selectors-preview { margin-top: 14px; padding: 10px; background: #f9fafb; border: 1px solid #e5e5e5; border-radius: 6px; font-size: 11px; font-family: monospace; white-space: pre-wrap; max-height: 160px; overflow-y: auto; display: none; }
   .selectors-preview.active { display: block; }
+  @media (max-width: 980px) {
+    .main { padding: 0 16px; }
+    .header { padding: 12px 16px; }
+    .dashboard-grid { grid-template-columns: 1fr; }
+    .header-primary { margin-left: 0; width: 100%; justify-content: flex-start; }
+    .actions-stack { min-width: 0; }
+    .actions { grid-template-columns: repeat(2, minmax(82px, 1fr)); }
+    table { display: block; overflow-x: auto; }
+  }
 </style>
 </head>
 <body>
@@ -116,32 +121,60 @@
     <span id="siteCount" style="font-size:12px;color:#999;"></span>
   </div>
   <div class="header-group header-primary">
-  <button class="btn btn-secondary" id="btnCheckAll">全部检测</button>
-  <button class="btn btn-secondary" id="btnCrawlAll">全部抓取</button>
+    <button class="btn btn-primary" id="btnServiceToggle">启动</button>
+    <button class="btn btn-secondary" id="btnCheckAll">全部检测</button>
+    <button class="btn btn-secondary" id="btnCrawlAll">全部抓取</button>
   </div>
   <div class="header-group header-secondary">
-  <select class="interval-select" id="intervalSelect" title="定时抓取间隔">
-    <option value="1">每1小时</option>
-    <option value="6" selected>每6小时</option>
-    <option value="12">每12小时</option>
-    <option value="24">每24小时</option>
-  </select>
-  <select class="interval-select" id="ageSelect" title="文章时效过滤">
-    <option value="0">不过滤</option>
-    <option value="1">仅1天内</option>
-    <option value="2">仅2天内</option>
-    <option value="3">仅3天内</option>
-    <option value="5">仅5天内</option>
-    <option value="7">仅7天内</option>
-  </select>
-  <input id="dataDirInput" class="data-dir-input" type="text" placeholder="数据目录（绝对路径，空=默认）" title="抓取结果 JSON 文件保存目录">
-  <button class="btn btn-secondary" id="btnSaveDataDir">保存路径</button>
-  <button class="btn btn-primary" onclick="openModal()">+ 添加网站</button>
+    <select class="interval-select" id="intervalSelect" title="定时抓取间隔">
+      <option value="1" selected>每 1 小时</option>
+      <option value="2">每 2 小时</option>
+      <option value="3">每 3 小时</option>
+      <option value="4">每 4 小时</option>
+      <option value="5">每 5 小时</option>
+      <option value="6">每 6 小时</option>
+      <option value="7">每 7 小时</option>
+      <option value="8">每 8 小时</option>
+      <option value="9">每 9 小时</option>
+      <option value="10">每 10 小时</option>
+      <option value="11">每 11 小时</option>
+      <option value="12">每 12 小时</option>
+    </select>
+    <select class="interval-select" id="ageSelect" title="文章时效过滤">
+      <option value="0">不过滤</option>
+      <option value="1">1 天内</option>
+      <option value="2">2 天内</option>
+      <option value="3">3 天内</option>
+      <option value="5">5 天内</option>
+      <option value="7">7 天内</option>
+    </select>
+    <input id="dataDirInput" class="data-dir-input" type="text" placeholder="数据目录（绝对路径，留空使用默认）" title="抓取结果 JSON 文件保存目录">
+    <button class="btn btn-secondary" id="btnSaveDataDir">保存路径</button>
+    <button class="btn btn-primary" onclick="openModal()">+ 添加网站</button>
   </div>
 </div>
 
 <div class="main">
-  <div class="status-bar" id="statusBar">
+  <div class="dashboard-grid">
+    <div class="card stats-card">
+      <h2>统计</h2>
+      <div class="stats-list">
+        <div class="stats-row">
+          <span class="stats-label-card">当月抓取条目：</span>
+          <strong class="stats-value-card" id="statsMonthCount">0</strong>
+        </div>
+        <div class="stats-row">
+          <span class="stats-label-card">本周抓取条目：</span>
+          <strong class="stats-value-card" id="statsWeekCount">0</strong>
+        </div>
+        <div class="stats-row">
+          <span class="stats-label-card">本日抓取条目：</span>
+          <strong class="stats-value-card" id="statsDayCount">0</strong>
+        </div>
+      </div>
+      <p class="stats-note">按 JSON 文件名日期计入当月、本周和本日</p>
+    </div>
+    <div class="status-bar" id="statusBar">
     <span class="status-dot" id="statusDot"></span>
     <div class="status-meta">
       <span class="status-label">状态</span>
@@ -149,6 +182,7 @@
       <span class="status-target" id="statusTarget">等待操作</span>
     </div>
     <div class="status-progress" id="statusProgress"><div class="status-fill" id="statusFill"></div></div>
+    </div>
   </div>
   <div class="card">
     <table id="siteTable">
@@ -171,7 +205,6 @@
   </div>
 </div>
 
-<!-- 历史抽屉 -->
 <div class="history-backdrop" id="historyBackdrop" onclick="closeHistoryDrawer()"></div>
 <aside class="history-drawer history-panel" id="historyDrawer">
   <div class="history-drawer-header">
@@ -182,25 +215,24 @@
   <div class="article-list" id="articleList" style="display:none"></div>
 </aside>
 
-<!-- 添加/编辑弹窗 -->
-<div class="overlay" id="overlay" onmousedown="closeModalOnBg(event)">
+<div class="overlay" id="overlay" onpointerdown="trackModalBackdropPointerDown(event)" onclick="closeModalOnBg(event)">
   <div class="modal">
     <h2 id="modalTitle">添加网站</h2>
-    <div class="field"><label>名称 *</label><input id="fName" placeholder="例：新华网"></div>
+    <div class="field"><label>名称 *</label><input id="fName" placeholder="例如：新华网"></div>
     <div class="field"><label>URL *</label><input id="fUrl" placeholder="https://example.com"></div>
     <div class="field">
       <label>抓取模式</label>
       <select id="fCrawlMode">
-        <option value="auto">auto — 自动（默认）</option>
-        <option value="html">html — 静态抓取</option>
-        <option value="js">js — 动态渲染</option>
-        <option value="stealth">stealth — 隐蔽抓取</option>
+        <option value="auto">auto - 自动（默认）</option>
+        <option value="html">html - 静态抓取</option>
+        <option value="js">js - 动态渲染</option>
+        <option value="stealth">stealth - 隐蔽抓取</option>
       </select>
     </div>
     <div class="field"><label>备注</label><textarea id="fNote" placeholder="可选"></textarea></div>
     <div class="selectors-preview" id="selectorsPreview"></div>
     <div class="modal-footer">
-      <button class="btn btn-ai btn-sm" id="btnAnalyze" onclick="analyzeSite()" style="margin-right:auto;display:none">AI 分析</button>
+      <button class="btn btn-ai btn-sm" id="btnAnalyze" onclick="analyzeSite()" style="margin-right:auto;display:none">AI分析</button>
       <button class="btn btn-secondary" onclick="closeModal()">取消</button>
       <button class="btn btn-primary" id="btnSave" onclick="saveSite()">保存</button>
     </div>
@@ -213,6 +245,33 @@ let pollTimer = null;
 let crawlPollTimer = null;
 let analyzePollTimer = null;
 let modalInitialState = '';
+let modalBackdropPointerDown = false;
+let _dataDirTimer = null;
+let _analyzeSourceId = null;
+let _analyzeFromModal = false;
+let systemState = {
+  scheduler_on: true,
+  interval_hours: 1,
+  last_run: null,
+  crawl_running: false,
+  crawl_stopped: false,
+};
+
+const STATUS_LABEL = {
+  rss: 'RSS',
+  no_rss: '无 RSS',
+  pending: '待检测',
+  timeout: '超时',
+  error: '错误',
+  checking: '检测中',
+};
+
+const MODE_LABEL = {
+  auto: 'AUTO',
+  html: 'HTML',
+  js: 'JS',
+  stealth: 'STEALTH',
+};
 
 function updateStatusBar(task, progress, target = '') {
   document.getElementById('statusTask').textContent = task;
@@ -224,18 +283,30 @@ function updateStatusBar(task, progress, target = '') {
     dot.classList.add('busy');
     prog.classList.add('active');
     fill.style.width = progress + '%';
-  } else if (task.includes('完成') || task.includes('就绪') || task.includes('已开启')) {
+  } else if (task.includes('完成') || task.includes('就绪') || task.includes('已启动') || task.includes('已停止')) {
     dot.classList.remove('busy');
     prog.classList.remove('active');
+    fill.style.width = '0%';
   } else {
     dot.classList.add('busy');
     prog.classList.remove('active');
   }
 }
 
+function setServiceToggle(enabled) {
+  const btn = document.getElementById('btnServiceToggle');
+  btn.textContent = enabled ? '停止' : '启动';
+  btn.classList.toggle('btn-primary', !enabled);
+  btn.classList.toggle('btn-danger', enabled);
+}
+
 function showIdleStatus() {
   const interval = document.getElementById('intervalSelect').value;
-  updateStatusBar('定时抓取已开启', null, '间隔 ' + interval + ' 小时');
+  if (!systemState.scheduler_on) {
+    updateStatusBar('抓取已停止', null, '点击启动恢复定时抓取');
+    return;
+  }
+  updateStatusBar('定时抓取已启动', null, '间隔 ' + interval + ' 小时');
 }
 
 function openHistoryDrawer() {
@@ -269,6 +340,45 @@ function captureModalState() {
   modalInitialState = serializeModalForm();
 }
 
+function trackModalBackdropPointerDown(e) {
+  modalBackdropPointerDown = e.target === document.getElementById('overlay');
+}
+
+function resetModalBackdropPointerState() {
+  modalBackdropPointerDown = false;
+}
+
+function esc(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function loadDashboardStats() {
+  try {
+    const res = await fetch('/api/system/stats');
+    if (!res.ok) return;
+    const stats = await res.json();
+    document.getElementById('statsMonthCount').textContent = String(stats.month_count || 0);
+    document.getElementById('statsWeekCount').textContent = String(stats.week_count || 0);
+    document.getElementById('statsDayCount').textContent = String(stats.day_count || 0);
+  } catch (e) {}
+}
+
+async function loadSystemStatus() {
+  const res = await fetch('/api/system/status');
+  systemState = await res.json();
+  setServiceToggle(systemState.scheduler_on);
+  if (systemState.crawl_running) {
+    startCrawlPolling();
+    return;
+  }
+  showIdleStatus();
+}
+
 async function loadSitesWithCrawlInfo() {
   const res = await fetch('/api/sites');
   const sites = await res.json();
@@ -280,18 +390,112 @@ async function loadSitesWithCrawlInfo() {
         s.crawl_count = results[0].count;
         s.last_crawled = results[0].crawled_at;
       }
-    } catch(e) {}
+    } catch (e) {}
   }));
+  renderTable(sites);
+  document.getElementById('siteCount').textContent = sites.length + ' 个网站';
+  await loadDashboardStats();
+}
+
+async function loadSites() {
+  const res = await fetch('/api/sites');
+  const sites = await res.json();
   renderTable(sites);
   document.getElementById('siteCount').textContent = sites.length + ' 个网站';
 }
 
+function renderTable(sites) {
+  const tbody = document.getElementById('tbody');
+  if (sites.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10"><div class="empty">还没有网站，点击右上角添加</div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = sites.map(s => {
+    const mode = s.crawl_mode || 'auto';
+    const paused = Boolean(s.crawl_paused);
+    const pauseBtnClass = paused ? 'btn btn-primary btn-sm' : 'btn btn-warning btn-sm';
+    const pauseBtnLabel = paused ? '恢复抓取' : '停止抓取';
+    return `
+    <tr id="row-${s.id}">
+      <td style="color:#999;font-size:12px;text-align:center">${s.seq || '—'}</td>
+      <td>${esc(s.name)}</td>
+      <td class="url-cell"><a href="${esc(s.url)}" target="_blank">${esc(s.url)}</a></td>
+      <td class="url-cell">${s.rss_url ? `<a href="${esc(s.rss_url)}" target="_blank">${esc(s.rss_url)}</a>` : '<span style="color:#ccc">—</span>'}</td>
+      <td><span class="badge badge-${esc(s.status)}">${STATUS_LABEL[s.status] || esc(s.status)}</span></td>
+      <td>
+        <div class="mode-stack">
+          <span class="badge badge-${esc(mode)}">${MODE_LABEL[mode] || esc(mode)}</span>
+          ${paused ? '<span class="badge badge-paused">已暂停</span>' : ''}
+        </div>
+      </td>
+      <td style="color:#999;font-size:12px">${s.last_checked ? s.last_checked.replace('T', ' ') : '—'}</td>
+      <td style="color:#999;font-size:12px">${s.crawl_count != null ? s.crawl_count : '—'}</td>
+      <td style="color:#999;font-size:12px">${s.last_crawled ? s.last_crawled.replace('T', ' ') : '—'}</td>
+      <td>
+        <div class="actions-stack">
+          <div class="actions actions-primary">
+            <button class="btn btn-secondary btn-sm" data-action="check" onclick="checkOne('${s.id}')">检测</button>
+            <button class="btn btn-secondary btn-sm" data-action="crawl" onclick="crawlOne('${s.id}')" ${paused ? 'disabled' : ''}>抓取</button>
+            <button class="${pauseBtnClass}" data-action="pause" onclick="toggleSiteCrawl('${s.id}', ${paused})">${pauseBtnLabel}</button>
+            <button class="btn btn-ai btn-sm" data-action="analyze" onclick="analyzeSiteById('${s.id}')">AI分析</button>
+          </div>
+          <div class="actions actions-secondary">
+            <button class="btn btn-secondary btn-sm" onclick="showHistory('${s.id}', '${esc(s.name)}')">历史</button>
+            <button class="btn btn-secondary btn-sm" onclick="openModal('${s.id}')">编辑</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteSite('${s.id}')">删除</button>
+            <span class="btn btn-secondary btn-sm action-placeholder">占位</span>
+          </div>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function checkOne(id) {
+  const row = document.getElementById('row-' + id);
+  const btn = row.querySelector('[data-action="check"]');
+  const badge = row.querySelector('.badge');
+  btn.disabled = true;
+  badge.className = 'badge badge-checking';
+  badge.textContent = '检测中';
+  const res = await fetch('/api/check/' + id, { method: 'POST' });
+  if (!res.ok) {
+    alert('检测失败');
+  }
+  btn.disabled = false;
+  loadSites();
+}
+
 async function crawlOne(id) {
   const row = document.getElementById('row-' + id);
-  const btn = Array.from(row.querySelectorAll('button')).find(b => b.textContent === '抓取');
-  if (btn) { btn.disabled = true; btn.textContent = '抓取中…'; }
-  await fetch('/api/crawl/' + id, { method: 'POST' });
-  if (btn) { btn.disabled = false; btn.textContent = '抓取'; }
+  const btn = row.querySelector('[data-action="crawl"]');
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  btn.textContent = '抓取中';
+  try {
+    const res = await fetch('/api/crawl/' + id, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || '抓取失败');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '抓取';
+    loadSitesWithCrawlInfo();
+  }
+}
+
+async function toggleSiteCrawl(id, paused) {
+  const res = await fetch('/api/sites/' + id + '/crawl-toggle', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paused: !paused }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    alert(data.error || '更新失败');
+    return;
+  }
   loadSitesWithCrawlInfo();
 }
 
@@ -301,9 +505,11 @@ function startCrawlPolling() {
   crawlPollTimer = setInterval(async () => {
     const res = await fetch('/api/crawl/status');
     const s = await res.json();
+    systemState.crawl_running = s.running;
+    systemState.crawl_stopped = s.stopped;
     if (s.total > 0) {
-      const pct = Math.round(s.done / s.total * 100);
-      updateStatusBar('抓取中', pct, s.done + '/' + s.total + (s.current ? '：' + s.current : ''));
+      const pct = Math.round((s.done / s.total) * 100);
+      updateStatusBar(s.stopped && s.running ? '停止中' : '抓取中', pct, s.done + '/' + s.total + (s.current ? '，' + s.current : ''));
     }
     if (!s.running) {
       clearInterval(crawlPollTimer);
@@ -311,14 +517,17 @@ function startCrawlPolling() {
       const btn = document.getElementById('btnCrawlAll');
       btn.disabled = false;
       btn.textContent = '全部抓取';
-      loadSitesWithCrawlInfo();
-      showIdleStatus();
+      await loadSitesWithCrawlInfo();
+      await loadSystemStatus();
+      if (s.stopped) {
+        updateStatusBar('抓取已停止', null, '服务器已停止继续抓取剩余网站');
+      }
     }
   }, 1500);
 }
 
 async function showHistory(siteId, siteName) {
-  document.getElementById('historyTitle').textContent = siteName + ' — 抓取历史';
+  document.getElementById('historyTitle').textContent = siteName + ' - 抓取历史';
   document.getElementById('articleList').style.display = 'none';
   document.getElementById('articleList').innerHTML = '';
   openHistoryDrawer();
@@ -331,7 +540,7 @@ async function showHistory(siteId, siteName) {
   }
   list.innerHTML = results.map(r => `
     <li data-site-id="${esc(siteId)}" data-filename="${esc(r.filename)}" class="history-item">
-      <span style="color:#999">${r.crawled_at.replace('T',' ')}</span>
+      <span style="color:#999">${r.crawled_at.replace('T', ' ')}</span>
       <span>${r.count} 条</span>
       <span class="badge badge-${r.method === 'rss' ? 'rss' : 'no_rss'}">${r.method.toUpperCase()}</span>
     </li>
@@ -354,26 +563,25 @@ async function showArticles(siteId, filename, liEl) {
   liEl.classList.add('active');
   const res = await fetch('/api/results/' + siteId + '/' + filename);
   const data = await res.json();
-
   const items = data.items || [];
-
   articleDiv.style.display = 'block';
-  articleDiv.innerHTML = items.map(item =>
-    `<a href="${esc(item.url)}" target="_blank">${esc(item.title)}</a>`
-  ).join('');
+  articleDiv.innerHTML = items.map(item => `<a href="${esc(item.url)}" target="_blank">${esc(item.title)}</a>`).join('');
 }
 
 async function initIntervalSelect() {
   const res = await fetch('/api/config');
   const cfg = await res.json();
   const sel = document.getElementById('intervalSelect');
-  sel.value = String(cfg.crawl_interval_hours || 6);
+  const interval = Number(cfg.crawl_interval_hours || 1);
+  sel.value = String(Math.min(Math.max(interval, 1), 12));
   sel.addEventListener('change', async () => {
     await fetch('/api/config', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ crawl_interval_hours: parseInt(sel.value) })
     });
+    systemState.interval_hours = parseInt(sel.value);
+    showIdleStatus();
   });
   document.getElementById('dataDirInput').value = cfg.data_dir || '';
   const ageSel = document.getElementById('ageSelect');
@@ -387,84 +595,8 @@ async function initIntervalSelect() {
   });
 }
 
-const STATUS_LABEL = {
-  rss: 'RSS',
-  no_rss: '无RSS',
-  pending: '待检测',
-  timeout: '超时',
-  error: '出错',
-  checking: '检测中…',
-};
-
-const MODE_LABEL = {
-  auto: 'AUTO',
-  html: 'HTML',
-  js: 'JS',
-  stealth: 'STEALTH',
-};
-
-async function loadSites() {
-  const res = await fetch('/api/sites');
-  const sites = await res.json();
-  renderTable(sites);
-  document.getElementById('siteCount').textContent = sites.length + ' 个网站';
-}
-
-function renderTable(sites) {
-  const tbody = document.getElementById('tbody');
-  if (sites.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="10"><div class="empty">还没有网站，点击右上角添加</div></td></tr>';
-    return;
-  }
-  tbody.innerHTML = sites.map(s => {
-    const mode = s.crawl_mode || 'auto';
-    return `
-    <tr id="row-${s.id}">
-      <td style="color:#999;font-size:12px;text-align:center">${s.seq || '—'}</td>
-      <td>${esc(s.name)}</td>
-      <td class="url-cell"><a href="${esc(s.url)}" target="_blank">${esc(s.url)}</a></td>
-      <td class="url-cell">${s.rss_url ? `<a href="${esc(s.rss_url)}" target="_blank">${esc(s.rss_url)}</a>` : '<span style="color:#ccc">—</span>'}</td>
-      <td><span class="badge badge-${esc(s.status)}">${STATUS_LABEL[s.status] || esc(s.status)}</span></td>
-      <td><span class="badge badge-${esc(mode)}">${MODE_LABEL[mode] || esc(mode)}</span></td>
-      <td style="color:#999;font-size:12px">${s.last_checked ? s.last_checked.replace('T', ' ') : '—'}</td>
-      <td style="color:#999;font-size:12px">${s.crawl_count != null ? s.crawl_count : '—'}</td>
-      <td style="color:#999;font-size:12px">${s.last_crawled ? s.last_crawled.replace('T', ' ') : '—'}</td>
-      <td><div class="actions-stack"><div class="actions actions-primary">
-        <button class="btn btn-secondary btn-sm" onclick="checkOne('${s.id}')">检测</button>
-        <button class="btn btn-secondary btn-sm" onclick="crawlOne('${s.id}')">抓取</button>
-        <button class="btn btn-ai btn-sm" onclick="analyzeSiteById('${s.id}')">AI分析</button>
-        </div><div class="actions actions-secondary">
-        <button class="btn btn-secondary btn-sm" onclick="showHistory('${s.id}', '${esc(s.name)}')">历史</button>
-        <button class="btn btn-secondary btn-sm" onclick="openModal('${s.id}')">编辑</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteSite('${s.id}')">删除</button>
-      </div></div></td>
-    </tr>`;
-  }).join('');
-}
-
-function esc(str) {
-  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-async function checkOne(id) {
-  const row = document.getElementById('row-' + id);
-  const btn = row.querySelector('button');
-  btn.disabled = true;
-  row.querySelector('.badge').className = 'badge badge-checking';
-  row.querySelector('.badge').textContent = '检测中…';
-  const res = await fetch('/api/check/' + id, { method: 'POST' });
-  const site = await res.json();
-  btn.disabled = false;
-  loadSites();
-}
-
-async function deleteSite(id) {
-  if (!confirm('确认删除？')) return;
-  await fetch('/api/sites/' + id, { method: 'DELETE' });
-  loadSites();
-}
-
 function openModal(id) {
+  resetModalBackdropPointerState();
   editingId = id || null;
   document.getElementById('modalTitle').textContent = id ? '编辑网站' : '添加网站';
   const btnAnalyze = document.getElementById('btnAnalyze');
@@ -500,11 +632,15 @@ function openModal(id) {
 
 function closeModal(force = false) {
   if (!force && !confirmDiscardModalChanges()) return;
+  resetModalBackdropPointerState();
   document.getElementById('overlay').classList.remove('open');
 }
 
 function closeModalOnBg(e) {
-  if (e.target === document.getElementById('overlay')) closeModal();
+  const overlay = document.getElementById('overlay');
+  const shouldClose = modalBackdropPointerDown && e.target === overlay && e.currentTarget === overlay;
+  resetModalBackdropPointerState();
+  if (shouldClose) closeModal();
 }
 
 async function saveSite() {
@@ -512,7 +648,7 @@ async function saveSite() {
   const url = document.getElementById('fUrl').value.trim();
   const note = document.getElementById('fNote').value.trim();
   const crawl_mode = document.getElementById('fCrawlMode').value;
-  if (!name || !url) { alert('名称和URL不能为空'); return; }
+  if (!name || !url) { alert('名称和 URL 不能为空'); return; }
   const btn = document.getElementById('btnSave');
   btn.disabled = true;
   const body = JSON.stringify({ name, url, note, crawl_mode });
@@ -526,10 +662,29 @@ async function saveSite() {
   loadSitesWithCrawlInfo();
 }
 
+document.getElementById('btnServiceToggle').addEventListener('click', async () => {
+  const btn = document.getElementById('btnServiceToggle');
+  btn.disabled = true;
+  const res = await fetch('/api/system/crawl-service', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ enabled: !systemState.scheduler_on })
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    alert(data.error || '操作失败');
+  }
+  await loadSystemStatus();
+  if (!systemState.scheduler_on) {
+    await fetch('/api/crawl/stop', { method: 'POST' });
+  }
+  btn.disabled = false;
+});
+
 document.getElementById('btnCheckAll').addEventListener('click', async () => {
   const btn = document.getElementById('btnCheckAll');
   btn.disabled = true;
-  btn.textContent = '检测中…';
+  btn.textContent = '检测中';
   await fetch('/api/check', { method: 'POST' });
   startPolling();
 });
@@ -540,7 +695,7 @@ function startPolling() {
     const res = await fetch('/api/check/status');
     const s = await res.json();
     const pct = s.total > 0 ? Math.round(s.done / s.total * 100) : 0;
-    updateStatusBar('检测中', pct, s.done + '/' + s.total + (s.current ? '：' + s.current : ''));
+    updateStatusBar('检测中', pct, s.done + '/' + s.total + (s.current ? '，' + s.current : ''));
     loadSites();
     if (!s.running) {
       clearInterval(pollTimer);
@@ -552,13 +707,6 @@ function startPolling() {
   }, 1500);
 }
 
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && document.getElementById('overlay').classList.contains('open')) {
-    closeModal();
-  }
-});
-
-let _dataDirTimer = null;
 document.getElementById('btnSaveDataDir').addEventListener('click', async () => {
   const input = document.getElementById('dataDirInput');
   const btn = document.getElementById('btnSaveDataDir');
@@ -574,7 +722,7 @@ document.getElementById('btnSaveDataDir').addEventListener('click', async () => 
   btn.disabled = false;
   if (res.ok) {
     input.classList.add('saved');
-    btn.textContent = '已保存 ✓';
+    btn.textContent = '已保存';
     _dataDirTimer = setTimeout(() => { input.classList.remove('saved'); btn.textContent = '保存路径'; }, 2000);
   } else {
     input.classList.add('error');
@@ -586,10 +734,23 @@ document.getElementById('btnSaveDataDir').addEventListener('click', async () => 
 document.getElementById('btnCrawlAll').addEventListener('click', async () => {
   const btn = document.getElementById('btnCrawlAll');
   btn.disabled = true;
-  btn.textContent = '抓取中…';
-  await fetch('/api/crawl', { method: 'POST' });
+  btn.textContent = '抓取中';
+  const res = await fetch('/api/crawl', { method: 'POST' });
+  const data = await res.json();
+  if (!res.ok) {
+    alert(data.error || '抓取失败');
+    btn.disabled = false;
+    btn.textContent = '全部抓取';
+    return;
+  }
   startCrawlPolling();
 });
+
+async function deleteSite(id) {
+  if (!confirm('确认删除？')) return;
+  await fetch('/api/sites/' + id, { method: 'DELETE' });
+  loadSites();
+}
 
 async function analyzeSite() {
   if (!editingId) return;
@@ -598,22 +759,18 @@ async function analyzeSite() {
 
 async function analyzeSiteById(id) {
   const row = document.getElementById('row-' + id);
-  const btn = Array.from(row.querySelectorAll('button')).find(b => b.textContent === 'AI分析');
-  if (btn) { btn.disabled = true; btn.textContent = '分析中…'; }
+  const btn = row ? row.querySelector('[data-action="analyze"]') : null;
+  if (btn) { btn.disabled = true; btn.textContent = '分析中'; }
   await _doAnalyze(id);
 }
 
-let _analyzeSourceId = null;
-let _analyzeFromModal = false;
-
 async function _doAnalyze(siteId) {
-  const preview = document.getElementById('selectorsPreview');
   const btnModal = document.getElementById('btnAnalyze');
   _analyzeFromModal = document.getElementById('overlay').classList.contains('open');
   _analyzeSourceId = siteId;
   if (_analyzeFromModal && btnModal) {
     btnModal.disabled = true;
-    btnModal.textContent = '分析中…';
+    btnModal.textContent = '分析中';
   }
   try {
     const res = await fetch('/api/sites/' + siteId + '/analyze', { method: 'POST' });
@@ -624,7 +781,7 @@ async function _doAnalyze(siteId) {
       return;
     }
     startAnalyzePolling();
-  } catch(e) {
+  } catch (e) {
     alert('请求失败: ' + e.message);
     _restoreAnalyzeButtons();
   }
@@ -632,13 +789,11 @@ async function _doAnalyze(siteId) {
 
 function _restoreAnalyzeButtons() {
   const btnModal = document.getElementById('btnAnalyze');
-  if (btnModal) { btnModal.disabled = false; btnModal.textContent = 'AI 分析'; }
+  if (btnModal) { btnModal.disabled = false; btnModal.textContent = 'AI分析'; }
   if (_analyzeSourceId) {
     const row = document.getElementById('row-' + _analyzeSourceId);
-    if (row) {
-      const btn = Array.from(row.querySelectorAll('button')).find(b => b.textContent === '分析中…');
-      if (btn) { btn.disabled = false; btn.textContent = 'AI分析'; }
-    }
+    const btn = row ? row.querySelector('[data-action="analyze"]') : null;
+    if (btn) { btn.disabled = false; btn.textContent = 'AI分析'; }
   }
   _analyzeSourceId = null;
   _analyzeFromModal = false;
@@ -682,9 +837,18 @@ function startAnalyzePolling() {
   }, 1500);
 }
 
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('overlay').classList.contains('open')) {
+    closeModal();
+  }
+});
+
+document.addEventListener('pointerup', resetModalBackdropPointerState);
+document.addEventListener('pointercancel', resetModalBackdropPointerState);
+
 loadSitesWithCrawlInfo();
 initIntervalSelect();
-showIdleStatus();
+loadSystemStatus();
 </script>
 </body>
 </html>

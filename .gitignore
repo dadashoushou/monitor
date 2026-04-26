@@ -14,6 +14,8 @@ sites.json
 state.json
 data/
 raw/
+mirror-data/
+history_mirror/
 
 frontend/config.json
 frontend/state.json

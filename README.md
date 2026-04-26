@@ -1,42 +1,48 @@
 # OpenMonitor
 
-网站内容监控与抓取工具，带 Web 管理界面、RSS 检测、多抓取模式和可选 AI 规则分析。
+网站内容监控与抓取工具，提供 Flask 管理界面、RSS 检测、多抓取模式、历史查看和可选 AI 选择器分析。
 
 ## 功能
 
-- 添加、编辑、删除监控站点
-- 自动检测 RSS，并在 RSS / HTML / JS / stealth 模式之间切换
-- 基于 Scrapling 抓取静态页、动态页和带反爬保护的页面
-- 使用 AI 生成选择器规则，并缓存到本地站点配置
-- 支持定时抓取、手动抓取、历史结果查看和增量去重
-- 支持文章时效过滤和统一状态栏进度反馈
+- 管理监控站点：新增、编辑、删除
+- 自动检测 RSS，并在 `rss` / `html` / `js` / `stealth` 模式之间切换
+- 支持定时抓取、批量抓取、单站点抓取
+- 支持站点级暂停抓取、批量抓取停止、调度开关
+- 支持文章时效过滤
+- 支持抓取历史查看
+- 支持基于标题索引的增量去重
+- 支持 AI 分析页面结构并生成 selectors
 
 ## 技术栈
 
-- 后端：Python 3.12 + Flask
-- 抓取引擎：[Scrapling](https://github.com/D4Vinci/Scrapling)
-- RSS 解析：feedparser
-- AI 分析：任意 OpenAI 兼容接口
-- 前端：Jinja2 模板
-- 存储：本地 JSON 文件
+- Python 3.12
+- Flask
+- APScheduler
+- feedparser
+- Scrapling
 
 ## 快速启动
 
-```bash
-pip install flask requests feedparser apscheduler scrapling
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+Copy-Item config.example.json config.json
 python app.py
 ```
 
-默认访问地址：`http://localhost:5000`
+默认访问地址：`http://127.0.0.1:5000`
 
 ## 配置
 
-复制 `config.example.json` 为 `config.json`，填入你自己的运行参数：
+`config.example.json`:
 
 ```json
 {
-  "crawl_interval_hours": 6,
+  "crawl_interval_hours": 1,
   "data_dir": "",
+  "mirror_data_dir": "",
   "max_items": 200,
   "max_article_age_days": 0,
   "ai": {
@@ -47,43 +53,43 @@ python app.py
 }
 ```
 
-| 字段 | 说明 |
-|------|------|
-| `crawl_interval_hours` | 定时抓取间隔（小时） |
-| `data_dir` | 抓取结果保存目录，留空时使用 `./data` |
-| `max_items` | 单站点最大抓取条数 |
-| `max_article_age_days` | 文章时效过滤天数，`0` 表示不过滤 |
-| `ai.api_url` | OpenAI 兼容接口地址 |
-| `ai.api_key` | 你的 API 密钥 |
-| `ai.model` | 你的模型名 |
+关键字段：
+
+- `crawl_interval_hours`: 定时抓取间隔，范围 `1-12` 小时
+- `data_dir`: 抓取结果 JSON 保存目录，留空时默认使用 `./data`
+- `mirror_data_dir`: 标题索引目录，留空时默认使用 `./history_mirror`
+- `max_items`: 单站点单次最多保留的文章数
+- `max_article_age_days`: 文章时效过滤天数，`0` 表示不过滤
+- `ai`: 可选 AI 配置，用于页面结构分析
+
+## History Mirror
+
+- `mirror_data_dir` 现在默认指向 `./history_mirror`
+- `history_mirror` 只保存每个站点的标题索引文件
+- 索引文件包含 `site_id`、`site_url`、`updated_at`、`titles`
+- 去重规则按 `site_id + 规范化标题` 比对
+- 历史去重只读取 `history_mirror`，不读取 `data_dir`
+- 不再保存镜像抓取快照文件
 
 ## AI 分析流程
 
-点击站点的“AI 分析”后，系统会：
-
 1. 抓取目标页面 HTML
-2. 清洗噪音内容并截断到安全大小
+2. 清洗噪音内容并裁剪到安全大小
 3. 调用 LLM 生成 CSS 选择器、URL 过滤和时间提取规则
 4. 将规则写入本地 `sites.json`，后续抓取直接复用
 
-未配置 AI 时，系统会回退到内置抓取逻辑。
+## 本地文件
 
-## 公开仓库说明
-
-本仓库不会提交以下本地文件或产物：
+以下内容属于本地运行状态或敏感配置，不应提交到公共仓库：
 
 - `config.json`
 - `sites.json`
 - `state.json`
 - `data/`
 - `raw/`
+- `history_mirror/`
 - `graphify-out/`
-- `frontend/graphify-out/`
-- `frontend/config.json`
-- `frontend/state.json`
-- 各类测试缓存和图谱缓存
-
-发布前检查见 [docs/PUBLIC_REPO_GUIDE.md](docs/PUBLIC_REPO_GUIDE.md)。
+- 各类测试缓存目录
 
 ## 项目结构
 
@@ -92,22 +98,31 @@ python app.py
 ├── app.py
 ├── ai_analyzer.py
 ├── crawler.py
+├── mirror_store.py
 ├── config.example.json
+├── requirements.txt
 ├── templates/
 ├── tests/
-├── docs/
-└── frontend/
+└── docs/
 ```
 
 ## API
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET/POST | `/api/sites` | 站点 CRUD |
-| PUT/DELETE | `/api/sites/<id>` | 更新或删除站点 |
-| POST | `/api/check` | 批量检测 RSS |
-| POST | `/api/crawl` | 批量抓取 |
-| POST | `/api/crawl/<id>` | 单站点抓取 |
-| POST | `/api/sites/<id>/analyze` | AI 分析站点结构 |
-| GET/POST | `/api/config` | 读取或更新运行配置 |
-| GET | `/api/results/<id>` | 查看抓取历史 |
+- `GET /api/sites`
+- `POST /api/sites`
+- `PUT /api/sites/<id>`
+- `DELETE /api/sites/<id>`
+- `POST /api/sites/<id>/crawl-toggle`
+- `POST /api/check`
+- `POST /api/check/<id>`
+- `POST /api/crawl`
+- `POST /api/crawl/<id>`
+- `POST /api/crawl/stop`
+- `GET /api/crawl/status`
+- `POST /api/sites/<id>/analyze`
+- `GET/POST /api/config`
+- `GET /api/results/<id>`
+- `GET /api/results/<id>/<filename>`
+- `GET /api/system/status`
+- `GET /api/system/stats`
+- `POST /api/system/crawl-service`

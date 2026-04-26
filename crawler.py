@@ -5,7 +5,7 @@ import re
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from urllib.parse import urljoin
 
 import feedparser
@@ -153,14 +153,19 @@ def crawl_rss(site: dict) -> list[dict]:
     """用 feedparser 抓取 site['rss_url']，返回条目列表"""
     feed = feedparser.parse(site['rss_url'])
     items = []
+    seen_urls: set[str] = set()
     for entry in feed.entries:
+        url = entry.get('link', '')
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
         published = _parsed_time_to_iso(
             getattr(entry, 'published_parsed', None) or
             getattr(entry, 'updated_parsed', None)
         )
         items.append({
             'title': entry.get('title', ''),
-            'url': entry.get('link', ''),
+            'url': url,
             'published': published,
             'crawled_at': datetime.now().isoformat(timespec='seconds'),
         })
@@ -205,6 +210,9 @@ def crawl_stealth(site: dict) -> list[dict]:
 
 def crawl_site(site: dict) -> dict | None:
     """根据 crawl_mode 路由到对应抓取函数，返回结果 dict 或 None"""
+    if site.get('crawl_paused'):
+        return None
+
     mode = site.get('crawl_mode', 'auto')
 
     if mode == 'auto':
@@ -248,11 +256,14 @@ def crawl_site(site: dict) -> dict | None:
 
 
 def crawl_all(sites: list[dict], data_dir: Path,
-              prev_urls_loader=None) -> list[dict]:
+              prev_urls_loader=None, dedupe_cb=None, save_hook=None,
+              should_stop=None, progress_cb=None) -> list[dict]:
     """按模式分组并发抓取：静态(rss/html/auto) max_workers=5，动态(js/stealth) max_workers=2"""
     static_sites = []
     dynamic_sites = []
     for s in sites:
+        if s.get('crawl_paused'):
+            continue
         mode = s.get('crawl_mode', 'auto')
         if mode in ('js', 'stealth'):
             dynamic_sites.append(s)
@@ -260,24 +271,60 @@ def crawl_all(sites: list[dict], data_dir: Path,
             static_sites.append(s)
 
     results = []
+    should_stop = should_stop or (lambda: False)
 
     def _collect(executor_sites, max_workers):
         if not executor_sites:
             return
+        site_iter = iter(executor_sites)
+        pending = {}
+        exhausted = False
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(crawl_site, s): s for s in executor_sites}
-            for future in as_completed(futures):
+            while pending or not exhausted:
+                while not exhausted and len(pending) < max_workers and not should_stop():
+                    try:
+                        site = next(site_iter)
+                    except StopIteration:
+                        exhausted = True
+                        break
+                    pending[executor.submit(crawl_site, site)] = site
+
+                if not pending:
+                    break
+
+                done, _ = wait(tuple(pending), return_when=FIRST_COMPLETED)
+                for future in done:
+                    site = pending.pop(future)
+                    result = None
+                    try:
+                        result = future.result()
+                        if result is not None:
+                            results.append(result)
+                    except Exception:
+                        pass
+                    if progress_cb:
+                        progress_cb(site, result)
+
+            for future, site in list(pending.items()):
+                result = None
                 try:
                     result = future.result()
                     if result is not None:
                         results.append(result)
                 except Exception:
                     pass
+                if progress_cb:
+                    progress_cb(site, result)
 
     _collect(static_sites, 5)
-    _collect(dynamic_sites, 2)
+    if not should_stop():
+        _collect(dynamic_sites, 2)
 
-    if prev_urls_loader:
+    if dedupe_cb:
+        for result in results:
+            result['items'] = dedupe_cb(result['site_id'], result['items'])
+            result['count'] = len(result['items'])
+    elif prev_urls_loader:
         for result in results:
             prev_urls = prev_urls_loader(result['site_id'])
             if prev_urls:
@@ -296,5 +343,7 @@ def crawl_all(sites: list[dict], data_dir: Path,
         }
         with open(data_dir / filename, 'w', encoding='utf-8') as f:
             json.dump(merged, f, ensure_ascii=False, indent=2)
+        if save_hook:
+            save_hook(merged, filename)
 
     return results
