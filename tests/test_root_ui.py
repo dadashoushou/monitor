@@ -74,7 +74,7 @@ def test_root_homepage_exposes_rolling_day_week_month_stats_card():
     assert "document.getElementById('statsMonthCount').textContent = String(stats.month_count || 0);" in page
     assert "document.getElementById('statsWeekCount').textContent = String(stats.week_count || 0);" in page
     assert "document.getElementById('statsDayCount').textContent = String(stats.day_count || 0);" in page
-    assert "按 JSON 文件名日期计入当月、本周和本日" in page
+    assert "按镜像历史快照日期计入当月、本周和本日" in page
 
 
 def test_root_homepage_interval_select_offers_1_to_12_hours():

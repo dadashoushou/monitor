@@ -150,8 +150,8 @@ def _snapshot_item_count(payload: dict) -> int:
 
 
 def _build_dashboard_stats() -> dict:
-    data_dir = get_data_dir()
-    if not data_dir.exists():
+    snapshots_dir = get_mirror_snapshots_dir()
+    if not snapshots_dir.exists():
         return {'month_count': 0, 'week_count': 0, 'day_count': 0}
 
     now = datetime.now()
@@ -160,7 +160,7 @@ def _build_dashboard_stats() -> dict:
     month_start = day_start.replace(day=1)
     stats = {'month_count': 0, 'week_count': 0, 'day_count': 0}
 
-    for filepath in data_dir.glob('*.json'):
+    for filepath in snapshots_dir.glob('*.json'):
         snapshot_dt = _parse_snapshot_datetime(filepath.name)
         if snapshot_dt is None or snapshot_dt > now:
             continue
@@ -224,6 +224,7 @@ def _save_single_result(site_id: str, result: dict) -> dict:
     filename = f"{ts}_{re.sub(r'[^\w\-]', '_', site_id)}.json"
     result['crawled_at'] = crawled_at
     _write_json(get_data_dir() / filename, result)
+    _write_json(get_mirror_snapshots_dir() / filename, result)
     update_site_index(
         get_mirror_index_dir(),
         site_id,
@@ -236,6 +237,7 @@ def _save_single_result(site_id: str, result: dict) -> dict:
 
 def _save_batch_snapshot_to_mirror(snapshot: dict, filename: str):
     _bootstrap_mirror_if_needed()
+    _write_json(get_mirror_snapshots_dir() / filename, snapshot)
     ingest_snapshot(get_mirror_index_dir(), snapshot)
 
 

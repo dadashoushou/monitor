@@ -129,6 +129,8 @@ def test_crawl_one_route_dedupes_against_mirror_and_updates_title_index(tmp_path
 
     written_results = list(data_dir.glob(f"*_{site_id}.json"))
     assert len(written_results) == 1
+    mirror_snapshots = list((mirror_dir / "snapshots").glob(f"*_{site_id}.json"))
+    assert len(mirror_snapshots) == 1
 
     with open(mirror_dir / f"{site_id}.json", "r", encoding="utf-8") as f:
         index_payload = json.load(f)
