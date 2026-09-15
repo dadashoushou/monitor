@@ -6,13 +6,36 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from urllib.parse import urljoin
+from urllib.parse import urldefrag, urljoin, urlparse, urlunparse
 
 import feedparser
+from bs4 import BeautifulSoup
 from scrapling import Fetcher, DynamicFetcher, StealthyFetcher
 
 DATE_PATTERN = re.compile(r'\d{4}[-/_]\d{2}')
 ARTICLE_PATTERN = re.compile(r'/article/')
+CONTENT_SELECTORS = (
+    'article',
+    '[role="main"]',
+    '.article-content',
+    '.article-content *',
+    '.content',
+    '.content *',
+    '.post-content',
+    '.post-content *',
+    '.entry-content',
+    '.entry-content *',
+    '.article-body',
+    '.article-body *',
+    '.article-detail',
+    '.article-detail *',
+    '.rich_media_content',
+    '.rich_media_content *',
+    '.article_main',
+    '.article_main *',
+    '.main-content',
+    '.main-content *',
+)
 
 _PUBLISHED_FORMATS = ('%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d')
 
@@ -56,6 +79,159 @@ def _extract_time_from_url(href: str, pattern: re.Pattern) -> str:
     return ''
 
 
+def _clean_text(text: str) -> str:
+    return re.sub(r'\s+', ' ', (text or '').strip())
+
+
+def _normalize_url(url: str) -> str:
+    raw = (url or '').strip()
+    if not raw:
+        return ''
+    raw, _fragment = urldefrag(raw)
+    parsed = urlparse(raw)
+    scheme = parsed.scheme.lower()
+    netloc = parsed.netloc.lower()
+    path = parsed.path or ''
+    if path != '/':
+        path = path.rstrip('/')
+    return urlunparse((scheme, netloc, path, '', parsed.query, ''))
+
+
+def _extract_raw_html_content(page, content_selector: str | list[str] | None) -> str:
+    if not content_selector:
+        return ''
+
+    selectors = (
+        [content_selector]
+        if isinstance(content_selector, str)
+        else [item for item in content_selector if isinstance(item, str) and item.strip()]
+    )
+    if not selectors:
+        return ''
+
+    raw_body = getattr(page, 'body', '') or ''
+    if isinstance(raw_body, bytes):
+        raw_body = raw_body.decode('utf-8', errors='ignore')
+    if not isinstance(raw_body, str) or not raw_body.strip():
+        return ''
+
+    try:
+        soup = BeautifulSoup(raw_body, 'html.parser')
+    except Exception:
+        return ''
+
+    for selector in selectors:
+        try:
+            elements = soup.select(selector)
+        except Exception:
+            continue
+        chunks = []
+        for element in elements:
+            text = _clean_text(element.get_text(' ', strip=True))
+            if len(text) >= 80:
+                chunks.append(text)
+        if chunks:
+            return '\n\n'.join(chunks)
+    return ''
+
+
+def _extract_page_content(page, content_selector: str | list[str] | None = None) -> str:
+    raw_content = _extract_raw_html_content(page, content_selector)
+    if raw_content:
+        return raw_content
+
+    text_chunks: list[str] = []
+    seen: set[str] = set()
+
+    for selector in CONTENT_SELECTORS:
+        try:
+            elements = page.css(selector)
+        except Exception:
+            continue
+        for el in elements or []:
+            try:
+                text = _clean_text(el.text or '')
+            except Exception:
+                continue
+            if len(text) < 80:
+                continue
+            if text in seen:
+                continue
+            seen.add(text)
+            text_chunks.append(text)
+        if text_chunks:
+            break
+
+    if text_chunks:
+        return '\n\n'.join(text_chunks)
+
+    try:
+        body = page.css('body')
+        if body:
+            text = _clean_text(body[0].text or '')
+            return text
+    except Exception:
+        pass
+
+    return ''
+
+
+def _crawl_article_content(
+    url: str,
+    fetcher='html',
+    content_selector: str | list[str] | None = None,
+) -> tuple[str, str]:
+    if not (url or '').startswith(('http://', 'https://')):
+        return '', ''
+    try:
+        if fetcher == 'js':
+            page = DynamicFetcher.fetch(
+                url,
+                headless=True, network_idle=True, disable_resources=True, timeout=30000
+            )
+        elif fetcher == 'stealth':
+            page = StealthyFetcher.fetch(
+                url,
+                headless=True, network_idle=True, disable_resources=True, timeout=30000
+            )
+        else:
+            page = Fetcher.get(url, timeout=15)
+    except Exception:
+        return '', ''
+
+    content = _extract_page_content(page, content_selector)
+    if not content:
+        content = _clean_text(page.text or '') if getattr(page, 'text', None) else ''
+    return content, getattr(page, 'body', '') if hasattr(page, 'body') else ''
+
+
+def _attach_article_content(items: list[dict], site: dict) -> list[dict]:
+    if not items:
+        return items
+
+    mode = site.get('crawl_mode', 'auto')
+    if mode == 'auto':
+        article_fetcher = 'html'
+    elif mode in ('html', 'js', 'stealth'):
+        article_fetcher = mode
+    else:
+        article_fetcher = 'html'
+
+    max_article_body_len = site.get('max_article_body_len', 0)
+    for item in items:
+        if item.get('content'):
+            continue
+        content, _ = _crawl_article_content(
+            item.get('url', ''),
+            article_fetcher,
+            site.get('content_selector'),
+        )
+        if max_article_body_len and len(content) > max_article_body_len:
+            content = content[:max_article_body_len]
+        item['content'] = content
+    return items
+
+
 def _extract_articles(page, site_url: str, selectors: dict = None,
                       max_items: int = 200) -> list[dict]:
     """从 Scrapling Response 中提取文章链接列表。
@@ -79,6 +255,7 @@ def _extract_articles(page, site_url: str, selectors: dict = None,
             continue
         seen_urls.add(href)
         items.append({'title': text, 'url': href, 'published': None,
+                      'content': '',
                       'crawled_at': datetime.now().isoformat(timespec='seconds')})
         if len(items) >= max_items:
             break
@@ -133,6 +310,7 @@ def _extract_with_selectors(page, site_url: str, selectors: dict,
                 pass
 
         items.append({'title': text, 'url': href, 'published': published,
+                      'content': '',
                       'crawled_at': datetime.now().isoformat(timespec='seconds')})
         if len(items) >= max_items:
             break
@@ -167,6 +345,8 @@ def crawl_rss(site: dict) -> list[dict]:
             'title': entry.get('title', ''),
             'url': url,
             'published': published,
+            'summary': entry.get('summary', '') or entry.get('description', ''),
+            'content': '',
             'crawled_at': datetime.now().isoformat(timespec='seconds'),
         })
     return items
@@ -215,25 +395,25 @@ def crawl_site(site: dict) -> dict | None:
 
     mode = site.get('crawl_mode', 'auto')
 
-    if mode == 'auto':
-        if site.get('status') == 'rss':
-            items = crawl_rss(site)
-            method = 'rss'
+    if site.get('status') == 'rss':
+        items = crawl_rss(site)
+        method = 'rss'
+    else:
+        if mode == 'auto':
+            items = crawl_html(site)
+            method = 'html'
+        elif mode == 'html':
+            items = crawl_html(site)
+            method = 'html'
+        elif mode == 'js':
+            items = crawl_js(site)
+            method = 'js'
+        elif mode == 'stealth':
+            items = crawl_stealth(site)
+            method = 'stealth'
         else:
             items = crawl_html(site)
             method = 'html'
-    elif mode == 'html':
-        items = crawl_html(site)
-        method = 'html'
-    elif mode == 'js':
-        items = crawl_js(site)
-        method = 'js'
-    elif mode == 'stealth':
-        items = crawl_stealth(site)
-        method = 'stealth'
-    else:
-        items = crawl_html(site)
-        method = 'html'
 
     if not items:
         return None
@@ -241,6 +421,26 @@ def crawl_site(site: dict) -> dict | None:
     max_age_days = site.get('max_article_age_days', 0)
     if max_age_days > 0:
         items = _filter_by_age(items, max_age_days)
+
+    skip_urls = {
+        normalized for normalized in
+        (_normalize_url(url) for url in site.get('_skip_urls', []))
+        if normalized
+    }
+    if skip_urls:
+        items = [
+            item for item in items
+            if _normalize_url(item.get('url', '')) not in skip_urls
+        ]
+
+    if not items:
+        return None
+
+    if site.get('fetch_article_content', True):
+        article_mode = site.get('crawl_mode', 'auto')
+        if article_mode == 'auto':
+            article_mode = 'html' if method == 'rss' else method
+        items = _attach_article_content(items, {**site, 'crawl_mode': article_mode})
 
     if not items:
         return None
@@ -330,6 +530,8 @@ def crawl_all(sites: list[dict], data_dir: Path,
             if prev_urls:
                 result['items'] = [i for i in result['items'] if i['url'] not in prev_urls]
                 result['count'] = len(result['items'])
+
+    results = [result for result in results if result.get('count', 0) > 0]
 
     if results:
         data_dir.mkdir(parents=True, exist_ok=True)

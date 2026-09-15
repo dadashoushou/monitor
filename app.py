@@ -6,6 +6,7 @@ openmonitor 后端管理界面
 import json
 import uuid
 import threading
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -16,9 +17,10 @@ import urllib3
 import feedparser
 from urllib.parse import urljoin
 from apscheduler.schedulers.background import BackgroundScheduler
+from bs4 import BeautifulSoup
 from crawler import crawl_site as _crawl_site, crawl_all as _crawl_all
 from ai_analyzer import analyze_page as _analyze_page
-from mirror_store import filter_new_items, ingest_snapshot, update_site_index
+from mirror_store import filter_new_items, ingest_snapshot, load_known_urls, update_site_index
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -26,6 +28,7 @@ app = Flask(__name__)
 
 DATA_FILE = Path(__file__).parent / 'sites.json'
 CONFIG_FILE = Path(__file__).parent / 'config.json'
+DEFAULT_BOOKMARK_HTML = r'D:\科情\科情\科情.html'
 
 # 抓取状态
 crawl_state = {
@@ -72,14 +75,26 @@ analyze_state = {
 
 def load_config() -> dict:
     if not CONFIG_FILE.exists():
-        return {'crawl_interval_hours': 1, 'scheduler_on': True}
+        return {
+            'crawl_interval_hours': 1,
+            'scheduler_on': True,
+            'bookmark_html_path': DEFAULT_BOOKMARK_HTML,
+        }
     with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-        return json.load(f)
+        cfg = json.load(f)
+    cfg.setdefault('crawl_interval_hours', 1)
+    cfg.setdefault('scheduler_on', True)
+    cfg.setdefault('bookmark_html_path', DEFAULT_BOOKMARK_HTML)
+    return cfg
 
 
 def save_config(cfg: dict):
-    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+    temp_file = CONFIG_FILE.with_name(f'.{CONFIG_FILE.name}.{uuid.uuid4().hex}.tmp')
+    with open(temp_file, 'w', encoding='utf-8') as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(temp_file, CONFIG_FILE)
 
 
 def get_crawl_interval_hours(cfg: dict | None = None) -> int:
@@ -96,6 +111,47 @@ def is_scheduler_enabled(cfg: dict | None = None) -> bool:
     return bool(cfg.get('scheduler_on', True))
 
 
+def _read_text_with_fallbacks(filepath: Path) -> str:
+    raw = filepath.read_bytes()
+    for encoding in ('utf-8-sig', 'utf-8', 'gb18030', 'gbk'):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode('utf-8', errors='ignore')
+
+
+def _extract_bookmark_items(html: str) -> list[dict]:
+    soup = BeautifulSoup(html, 'html.parser')
+    items = []
+    seen_urls: set[str] = set()
+
+    for a in soup.find_all('a', href=True):
+        href = (a.get('href') or '').strip()
+        if not href:
+            continue
+        lower_href = href.lower()
+        if lower_href.startswith(('javascript:', 'mailto:', 'data:', 'file:')) or href.startswith('#'):
+            continue
+
+        url = href if href.startswith(('http://', 'https://')) else _normalize_url(href)
+        if not url.startswith(('http://', 'https://')):
+            continue
+
+        normalized_url = url.lower()
+        if normalized_url in seen_urls:
+            continue
+        seen_urls.add(normalized_url)
+
+        title = a.get_text(' ', strip=True) or (a.get('title') or '').strip() or url
+        items.append({
+            'name': title,
+            'url': url,
+        })
+
+    return items
+
+
 _DEFAULT_DATA_DIR = Path(__file__).parent / 'data'
 _DEFAULT_MIRROR_DATA_DIR = Path(__file__).parent / 'history_mirror'
 _SNAPSHOT_FILENAME_RE = re.compile(r'^(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})_[\w\-]+\.json$')
@@ -108,6 +164,23 @@ def get_data_dir() -> Path:
     cfg = load_config()
     raw = cfg.get('data_dir', '').strip()
     return Path(raw) if raw else _DEFAULT_DATA_DIR
+
+
+def validate_data_dir(raw: str | None = None) -> tuple[bool, Path, str]:
+    """确认 JSON 输出目录可创建且可写，返回可用路径和错误原因。"""
+    value = str(raw or '').strip()
+    data_dir = Path(value) if value else _DEFAULT_DATA_DIR
+    try:
+        data_dir.mkdir(parents=True, exist_ok=True)
+        if not data_dir.is_dir():
+            return False, data_dir, '输出路径不是目录'
+        probe = data_dir / f'.openmonitor-write-test-{uuid.uuid4().hex}.json'
+        with open(probe, 'w', encoding='utf-8') as fp:
+            json.dump({'ok': True}, fp)
+        probe.unlink()
+    except OSError as exc:
+        return False, data_dir, f'路径无效或无写入权限：{exc}'
+    return True, data_dir, ''
 
 
 def get_mirror_data_dir() -> Path:
@@ -217,6 +290,11 @@ def _dedupe_items_with_mirror(site_id: str, items: list[dict]) -> list[dict]:
     return filter_new_items(get_mirror_index_dir(), site_id, items)
 
 
+def _known_urls_for_site(site_id: str) -> set[str]:
+    _bootstrap_mirror_if_needed()
+    return load_known_urls(get_mirror_index_dir(), site_id)
+
+
 def _save_single_result(site_id: str, result: dict) -> dict:
     _bootstrap_mirror_if_needed()
     crawled_at = datetime.now().isoformat(timespec='seconds')
@@ -251,6 +329,7 @@ def run_crawl_all():
     for s in sites:
         s.setdefault('max_items', global_max)
         s.setdefault('max_article_age_days', global_age)
+        s['_skip_urls'] = list(_known_urls_for_site(s['id']))
     crawl_stop_event.clear()
     previous_last_run = crawl_state.get('last_run')
     with crawl_lock:
@@ -427,6 +506,76 @@ def toggle_site_crawl(site_id):
     return jsonify({'error': 'site not found'}), 404
 
 
+@app.route('/api/import/bookmarks', methods=['POST'])
+def import_bookmarks():
+    data = request.get_json(silent=True) or {}
+    cfg = load_config()
+    raw_path = str(data.get('path') or cfg.get('bookmark_html_path') or DEFAULT_BOOKMARK_HTML).strip()
+    if not raw_path:
+        return jsonify({'error': '缺少书签文件路径'}), 400
+
+    filepath = Path(raw_path)
+    if not filepath.exists():
+        return jsonify({'error': f'文件不存在: {raw_path}'}), 404
+
+    try:
+        html = _read_text_with_fallbacks(filepath)
+        bookmark_items = _extract_bookmark_items(html)
+    except Exception as exc:
+        return jsonify({'error': f'读取或解析失败: {exc}'}), 400
+
+    if not bookmark_items:
+        return jsonify({'imported': 0, 'skipped': 0, 'total_found': 0})
+
+    sites = load_sites()
+    existing_urls = {
+        _normalize_url((site.get('url') or '').strip()).lower()
+        for site in sites
+        if site.get('url')
+    }
+    next_seq = max((s.get('seq', 0) for s in sites), default=0) + 1
+
+    imported = 0
+    skipped = 0
+    for item in bookmark_items:
+        url = _normalize_url(item['url'].strip())
+        if not url:
+            skipped += 1
+            continue
+        normalized_url = url.lower()
+        if normalized_url in existing_urls:
+            skipped += 1
+            continue
+        site = {
+            'seq': next_seq,
+            'id': str(uuid.uuid4()),
+            'name': item['name'].strip() or url,
+            'url': url,
+            'note': '',
+            'rss_url': None,
+            'status': 'pending',
+            'last_checked': None,
+            'crawl_mode': 'auto',
+            'crawl_paused': False,
+            'selectors': None,
+        }
+        sites.append(site)
+        existing_urls.add(normalized_url)
+        next_seq += 1
+        imported += 1
+
+    if imported:
+        save_sites(sites)
+
+    return jsonify({
+        'ok': True,
+        'imported': imported,
+        'skipped': skipped,
+        'total_found': len(bookmark_items),
+        'path': raw_path,
+    })
+
+
 HEADERS = {'User-Agent': 'Mozilla/5.0 (compatible; RSS-checker/1.0)'}
 RSS_PATHS = ['feed', 'feed/', 'rss', 'rss/', 'rss.xml', 'feed.xml', 'atom.xml', 'index.xml']
 
@@ -585,11 +734,12 @@ def crawl_one_route(site_id):
     cfg = load_config()
     site.setdefault('max_items', cfg.get('max_items', 200))
     site.setdefault('max_article_age_days', cfg.get('max_article_age_days', 0))
+    site['_skip_urls'] = list(_known_urls_for_site(site['id']))
     result = _crawl_site(site)
     if result and result.get('items'):
         result['items'] = _dedupe_items_with_mirror(site['id'], result['items'])
         result['count'] = len(result['items'])
-    if result:
+    if result and result.get('items'):
         _save_single_result(site['id'], result)
     return jsonify(result if result else {'count': 0})
 
@@ -603,7 +753,7 @@ def get_config():
 
 @app.route('/api/config', methods=['POST'])
 def update_config():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     cfg = load_config()
     if 'crawl_interval_hours' in data:
         try:
@@ -618,10 +768,9 @@ def update_config():
     if 'data_dir' in data:
         raw = str(data['data_dir']).strip()
         if raw:
-            try:
-                Path(raw).mkdir(parents=True, exist_ok=True)
-            except Exception:
-                return jsonify({'error': '路径无效或无权限'}), 400
+            valid, _data_dir, error = validate_data_dir(raw)
+            if not valid:
+                return jsonify({'error': error}), 400
         cfg['data_dir'] = raw
     if 'mirror_data_dir' in data:
         raw = str(data['mirror_data_dir']).strip()
@@ -634,16 +783,34 @@ def update_config():
         _reset_mirror_bootstrap()
     if 'max_article_age_days' in data:
         cfg['max_article_age_days'] = int(data['max_article_age_days'])
+    if 'bookmark_html_path' in data:
+        cfg['bookmark_html_path'] = str(data['bookmark_html_path']).strip() or DEFAULT_BOOKMARK_HTML
     save_config(cfg)
     return jsonify(cfg)
+
+
+@app.route('/api/config/data-dir-check', methods=['POST'])
+def check_data_dir():
+    data = request.get_json(silent=True) or {}
+    raw = str(data.get('data_dir', '')).strip()
+    valid, data_dir, error = validate_data_dir(raw)
+    if not valid:
+        return jsonify({'valid': False, 'error': error}), 400
+    return jsonify({'valid': True, 'data_dir': str(data_dir)})
 
 
 @app.route('/api/results/<site_id>', methods=['GET'])
 def get_results(site_id):
     data_dir = get_data_dir()
-    if not data_dir.exists():
+    try:
+        if not data_dir.exists():
+            return jsonify([])
+    except OSError:
         return jsonify([])
-    files = sorted(data_dir.glob(f'*_{site_id}.json'), reverse=True)
+    try:
+        files = sorted(data_dir.glob(f'*_{site_id}.json'), reverse=True)
+    except OSError:
+        return jsonify([])
     result = []
     for f in files:
         try:
@@ -658,6 +825,37 @@ def get_results(site_id):
         except Exception:
             pass
     return jsonify(result)
+
+
+@app.route('/api/results/summary', methods=['GET'])
+def get_results_summary():
+    """一次返回所有站点最近一条结果，避免首页为每个站点重复扫描数据目录。"""
+    # 首页只展示镜像中的摘要，避免输出目录位于不可用网络盘时阻塞页面。
+    data_dir = get_mirror_snapshots_dir()
+    try:
+        if not data_dir.exists():
+            return jsonify({})
+        files = sorted(data_dir.glob('*.json'), reverse=True)
+    except OSError:
+        return jsonify({})
+
+    summaries = {}
+    for filepath in files:
+        site_id = filepath.stem.rsplit('_', 1)[-1]
+        if not site_id or site_id in summaries:
+            continue
+        try:
+            with open(filepath, 'r', encoding='utf-8') as fp:
+                data = json.load(fp)
+        except (OSError, ValueError, TypeError):
+            continue
+        summaries[site_id] = {
+            'filename': filepath.name,
+            'crawled_at': data.get('crawled_at', ''),
+            'count': data.get('count', 0),
+            'method': data.get('method', ''),
+        }
+    return jsonify(summaries)
 
 
 @app.route('/api/results/<site_id>/<filename>', methods=['GET'])
@@ -802,6 +1000,12 @@ def set_crawl_service():
     data = request.get_json(silent=True) or {}
     enabled = bool(data.get('enabled'))
     cfg = load_config()
+    if enabled:
+        valid, _data_dir, error = validate_data_dir(cfg.get('data_dir', ''))
+        if not valid:
+            return jsonify({
+                'error': f'无法启动定时抓取：{error}。请先填写可用的 JSON 输出路径。'
+            }), 400
     cfg['scheduler_on'] = enabled
     save_config(cfg)
     _start_scheduler()

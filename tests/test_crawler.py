@@ -190,6 +190,45 @@ def test_crawl_site_auto_rss():
     assert result['count'] == 1
 
 
+def test_crawl_site_rss_with_stealth_article_fetch():
+    """RSS 站点在 stealth 模式下应使用 StealthyFetcher 补抓正文"""
+    from crawler import crawl_site
+
+    site = {
+        'id': 'rss-stealth',
+        'name': 'RSS stealth site',
+        'url': 'https://example.com',
+        'rss_url': 'https://example.com/feed',
+        'status': 'rss',
+        'crawl_mode': 'stealth',
+    }
+
+    with patch(
+        'crawler.crawl_rss',
+        return_value=[{
+            'title': 'T',
+            'url': 'https://example.com/article-1',
+            'published': None,
+            'summary': 'S',
+            'content': '',
+            'crawled_at': '2026-04-18T00:00:00',
+        }],
+    ), patch('crawler.StealthyFetcher') as MockSF:
+        mock_page = MagicMock()
+        mock_page.css.return_value = []
+        mock_page.text = 'Stealth article body text that is long enough to keep.'
+        MockSF.fetch.return_value = mock_page
+
+        result = crawl_site(site)
+
+    MockSF.fetch.assert_called_once_with(
+        'https://example.com/article-1',
+        headless=True, network_idle=True, disable_resources=True, timeout=30000
+    )
+    assert result['method'] == 'rss'
+    assert result['items'][0]['content']
+
+
 def test_crawl_site_auto_no_rss():
     """auto 模式 + status!=rss → 走 crawl_html"""
     from crawler import crawl_site
@@ -233,17 +272,23 @@ def test_crawl_site_stealth_mode():
 
 
 def test_crawl_site_html_mode():
-    """html 模式 → 强制走 crawl_html，即使有 RSS"""
+    """RSS 站点的 html 策略仍应先走 RSS，再按 html 补抓正文"""
     from crawler import crawl_site
 
     site = {'id': '5', 'name': 'Force HTML', 'url': 'https://force.com',
             'rss_url': 'https://force.com/feed', 'status': 'rss', 'crawl_mode': 'html'}
 
-    with patch('crawler.crawl_html', return_value=[{'title': 'T', 'url': 'U', 'published': None, 'crawled_at': '2026-04-18T00:00:00'}]) as mock_html:
+    with patch('crawler.crawl_rss', return_value=[{'title': 'T', 'url': 'https://force.com/article-1', 'published': None, 'summary': 'S', 'content': '', 'crawled_at': '2026-04-18T00:00:00'}]) as mock_rss, \
+         patch('crawler.Fetcher') as MockFetcher:
+        mock_page = MagicMock()
+        mock_page.css.return_value = []
+        mock_page.text = 'Article body text that is long enough to keep.'
+        MockFetcher.get.return_value = mock_page
         result = crawl_site(site)
 
-    mock_html.assert_called_once_with(site)
-    assert result['method'] == 'html'
+    mock_rss.assert_called_once_with(site)
+    MockFetcher.get.assert_called_once_with('https://force.com/article-1', timeout=15)
+    assert result['method'] == 'rss'
 
 
 def test_crawl_site_no_crawl_mode_defaults_auto():
@@ -257,6 +302,92 @@ def test_crawl_site_no_crawl_mode_defaults_auto():
 
     mock_html.assert_called_once_with(site)
     assert result['method'] == 'html'
+
+
+def test_crawl_site_skips_known_urls_before_content_fetch():
+    """历史 URL 会在正文抓取前被过滤，避免重复打开同一篇文章。"""
+    from crawler import crawl_site
+
+    site = {
+        'id': '7',
+        'name': 'Skip Known',
+        'url': 'https://example.com',
+        'status': 'no_rss',
+        '_skip_urls': ['https://example.com/article-1'],
+    }
+
+    with patch(
+        'crawler.crawl_html',
+        return_value=[
+            {'title': 'Old', 'url': 'https://example.com/article-1/', 'published': None, 'crawled_at': '2026-04-18T00:00:00'},
+            {'title': 'New', 'url': 'https://example.com/article-2', 'published': None, 'crawled_at': '2026-04-18T00:00:00'},
+        ],
+    ), patch('crawler._attach_article_content') as mock_attach:
+        mock_attach.side_effect = lambda items, site: [
+            {**item, 'content': '正文内容'} for item in items
+        ]
+        result = crawl_site(site)
+
+    assert result['count'] == 1
+    assert result['items'][0]['url'] == 'https://example.com/article-2'
+    mock_attach.assert_called_once()
+    assert [item['url'] for item in mock_attach.call_args.args[0]] == ['https://example.com/article-2']
+
+
+def test_extract_page_content_prefers_article_text():
+    """详情页正文优先从 article 等正文容器提取。"""
+    from crawler import _extract_page_content
+
+    article = MagicMock()
+    article.text = '这是第一段正文。' * 20
+    page = MagicMock()
+    page.css.side_effect = lambda selector: [article] if selector == 'article' else []
+
+    assert _extract_page_content(page).startswith('这是第一段正文。')
+
+
+def test_extract_page_content_supports_raw_html_content_selector():
+    """站点专属正文容器应从原始 HTML 中提取，即使 Scrapling text 为空。"""
+    from crawler import _extract_page_content
+
+    page = MagicMock()
+    page.body = (
+        b'<html><body><div class="col-md-8 content-wrapper">'
+        b'<span>Follow UST</span>'
+        b'<p>This is the article body with enough text to pass the content threshold.</p>'
+        b'</div></body></html>'
+    )
+    page.text = ''
+    page.css.return_value = []
+
+    content = _extract_page_content(page, 'div.col-md-8.content-wrapper')
+
+    assert 'This is the article body' in content
+    assert content
+
+
+def test_attach_article_content_passes_site_content_selector():
+    """正文抓取应把站点专属 content_selector 传给详情页抽取器。"""
+    from crawler import _attach_article_content
+
+    items = [{'title': 'T', 'url': 'https://example.com/article', 'content': ''}]
+    site = {
+        'crawl_mode': 'stealth',
+        'content_selector': 'div.col-md-8.content-wrapper',
+    }
+
+    with patch(
+        'crawler._crawl_article_content',
+        return_value=('正文内容', '<html></html>'),
+    ) as mock_content:
+        result = _attach_article_content(items, site)
+
+    assert result[0]['content'] == '正文内容'
+    mock_content.assert_called_once_with(
+        'https://example.com/article',
+        'stealth',
+        'div.col-md-8.content-wrapper',
+    )
 
 
 def test_crawl_site_returns_none_on_empty():
@@ -400,6 +531,147 @@ def test_extract_articles_selectors_fallback():
     assert len(items) == 1
     assert items[0]['title'] == '硬编码逻辑匹配日期URL的标题'
     mock_page.css.assert_called_with('a[href]')
+
+
+def test_defense_news_selector_covers_editorial_sections_and_excludes_special_pages():
+    """Defense News 规则覆盖多级栏目，并排除视频和专题落地页。"""
+    from crawler import _extract_articles
+
+    hrefs = [
+        '/industry/techwatch/2026/09/11/pentagon-looks-to-ai-to-identify-space-and-missile-threats/',
+        '/news/pentagon-congress/2026/09/11/saudi-crown-prince-sought-us-military-help-with-houthis-sources-say/',
+        '/global/2026/09/10/russia-sends-bones-of-medieval-warrior-prince-to-ukraine-front-to-boost-morale/',
+        '/flashpoints/middle-east/2026/09/10/iran-attack-on-base-in-jordan-damaged-american-military-aircraft-us-official-says/',
+        '/opinion/2026/09/03/chinese-military-analysts-cant-wait-for-the-us-navys-battleship-era/',
+        '/video/2026/09/08/marines-to-add-thousands-to-ranks-in-coming-years-defense-news-weekly-full-episode-9826/',
+        '/meta/2026/08/31/top-100-defense-companies-2026/',
+    ]
+    page = MagicMock()
+    page.css.return_value = [
+        _make_mock_element(f'Defense News article title {i} is long enough', href, {'href': href})
+        for i, href in enumerate(hrefs)
+    ]
+    selectors = {
+        'css_selector': 'article a[href]',
+        'url_pattern': r'^(?:https?://(?:www\.)?defensenews\.com)?/(?!video(?:/|$)|meta(?:/|$))[^?#]*?/\d{4}/\d{2}/\d{2}/[^/?#]+/?$',
+        'time_source': 'time_url',
+        'time_url_pattern': r'/(?P<year>\d{4})/(?P<month>\d{2})/(?P<day>\d{2})/',
+        'min_title_len': 12,
+        'max_title_len': 140,
+    }
+
+    items = _extract_articles(page, 'https://www.defensenews.com/', selectors)
+
+    assert len(items) == 5
+    assert all('/video/' not in item['url'] and '/meta/' not in item['url'] for item in items)
+    assert items[0]['published'] == '2026-09-11'
+
+
+def test_defense_news_article_content_selector_extracts_raw_article():
+    """Defense News 详情页的 article 容器可从原始 HTML 提取正文。"""
+    from crawler import _extract_page_content
+
+    page = MagicMock()
+    page.body = (
+        b'<html><body><article>'
+        b'<p>Missile defense in wartime involves many complications.</p>'
+        b'<p>The Pentagon now wants artificial intelligence that can cut through the confusion.</p>'
+        b'</article></body></html>'
+    )
+    page.text = ''
+    page.css.return_value = []
+
+    content = _extract_page_content(page, 'article')
+
+    assert 'Missile defense in wartime' in content
+    assert 'The Pentagon now wants artificial intelligence' in content
+
+
+def test_air_and_space_forces_article_content_selector_extracts_post_body():
+    """Air & Space Forces 详情页应从 post-body 容器提取正文。"""
+    from crawler import _extract_page_content
+
+    page = MagicMock()
+    page.body = (
+        b'<html><main id="main"><div class="post-body">'
+        b'<div class="author-date">Sept. 10, 2026 | By Author</div>'
+        b'<p class="wp-block-paragraph">The article body contains the full report '
+        b'and enough text to pass the content threshold for extraction.</p>'
+        b'<h4 class="wp-block-heading">Section heading</h4>'
+        b'<p class="wp-block-paragraph">A second paragraph keeps the article body '
+        b'behavior representative of the live site structure.</p>'
+        b'</div></main></html>'
+    )
+    page.text = ''
+    page.css.return_value = []
+
+    content = _extract_page_content(page, 'main#main .post-body')
+
+    assert 'The article body contains the full report' in content
+    assert 'Section heading' in content
+    assert content
+
+
+def test_afrl_article_content_selector_extracts_et_pb_post_content():
+    """AFRL 详情页应从 RSS 链接对应的正文容器提取原文。"""
+    from crawler import _extract_page_content
+
+    page = MagicMock()
+    page.body = (
+        b'<html><body><div class="et_pb_post_content">'
+        b'<p>The laboratory demonstrated a neural network control method '
+        b'for an in-orbit satellite bus during a flight experiment.</p>'
+        b'<p>The result supports future autonomous space operations and '
+        b'provides enough text to represent the article body.</p>'
+        b'</div></body></html>'
+    )
+    page.text = ''
+    page.css.return_value = []
+
+    content = _extract_page_content(page, '.et_pb_post_content')
+
+    assert 'The laboratory demonstrated a neural network control method' in content
+    assert 'future autonomous space operations' in content
+
+
+def test_lockheed_news_selector_matches_new_news_hub_articles():
+    """Lockheed 新新闻页规则应匹配内部 dated HTML 详情页。"""
+    import re
+
+    pattern = re.compile(
+        r'(?:(?:https?://www\.lockheedmartin\.com)?/en-us/news/[^?#]*\d{4}[^?#]*\.html|https?://news\.lockheedmartin\.com/\d{4}-\d{2}-\d{2}-[^?#]+)(?:[?#].*)?$'
+    )
+
+    assert pattern.search(
+        'https://www.lockheedmartin.com/en-us/news/features/2026/t-rex-demo.html'
+    )
+    assert pattern.search('/en-us/news/features/2026/t-rex-demo.html')
+    assert pattern.search(
+        'https://news.lockheedmartin.com/2026-09-10-example'
+    )
+    assert not pattern.search('https://www.lockheedmartin.com/en-us/news.html')
+
+
+def test_lockheed_article_content_selector_extracts_main_body():
+    """Lockheed 新站详情页应能从 main article-body 容器提取正文。"""
+    from crawler import _extract_page_content
+
+    page = MagicMock()
+    page.body = (
+        b'<html><main><div class="article-body">'
+        b'<p>The battlespace is evolving and the need for survivable '
+        b'autonomous capability is rapidly growing.</p>'
+        b'<p>The program continues toward first flight in 2027 with '
+        b'additional vehicles planned for production.</p>'
+        b'</div></main></html>'
+    )
+    page.text = ''
+    page.css.return_value = []
+
+    content = _extract_page_content(page, ['main .article-body', 'main'])
+
+    assert 'The battlespace is evolving' in content
+    assert 'first flight in 2027' in content
 
 
 def test_parse_published_formats():

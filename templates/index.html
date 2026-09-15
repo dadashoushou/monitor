@@ -22,7 +22,7 @@
   .btn-ai { background: #7c3aed; color: #fff; }
   .btn-sm { min-height: 34px; min-width: 82px; padding: 4px 10px; font-size: 12px; }
   .btn:disabled { opacity: .4; cursor: not-allowed; }
-  .main { max-width: 1400px; margin: 24px auto; padding: 0 24px; }
+  .main { max-width: 1760px; margin: 24px auto; padding: 0 24px; }
   .card { background: #fff; border-radius: 8px; border: 1px solid #e5e5e5; overflow: hidden; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th { background: #fafafa; padding: 10px 14px; text-align: left; font-weight: 500; color: #666; border-bottom: 1px solid #e5e5e5; white-space: nowrap; }
@@ -46,8 +46,8 @@
   .url-cell a { color: #2563eb; text-decoration: none; }
   .url-cell a:hover { text-decoration: underline; }
   .mode-stack { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
-  .actions { display: grid; grid-template-columns: repeat(4, minmax(82px, 1fr)); gap: 8px; white-space: nowrap; }
-  .actions-stack { display: flex; flex-direction: column; gap: 8px; min-width: 372px; }
+  .actions { display: grid; grid-template-columns: repeat(4, minmax(90px, 1fr)); gap: 8px; white-space: nowrap; }
+  .actions-stack { display: flex; flex-direction: column; gap: 8px; min-width: 420px; }
   .actions .btn { width: 100%; }
   .actions-primary .btn { border-color: #d4d4d4; }
   .actions-secondary .btn-sm { opacity: .92; }
@@ -94,8 +94,13 @@
   .history-list li:hover { background: #fafafa; }
   .history-list li:last-child { border-bottom: none; }
   .article-list { padding: 8px 14px 14px; background: #fafafa; }
-  .article-list a { display: block; font-size: 12px; color: #2563eb; text-decoration: none; padding: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .article-list a { color: #2563eb; text-decoration: none; }
   .article-list a:hover { text-decoration: underline; }
+  .article-item { padding: 9px 0; border-bottom: 1px solid #eee; }
+  .article-item:last-child { border-bottom: none; }
+  .article-title { display: block; font-size: 12px; line-height: 1.45; font-weight: 600; }
+  .article-meta { margin-top: 4px; font-size: 11px; color: #999; }
+  .article-content { margin-top: 6px; font-size: 12px; line-height: 1.6; color: #555; white-space: pre-wrap; word-break: break-word; }
   .data-dir-input { min-height: 38px; padding: 6px 10px; border-radius: 8px; border: 1px solid #d4d4d4; font-size: 13px; width: 260px; outline: none; }
   .data-dir-input:focus { border-color: #1a1a1a; }
   .data-dir-input.saved { border-color: #16a34a; }
@@ -150,6 +155,8 @@
     </select>
     <input id="dataDirInput" class="data-dir-input" type="text" placeholder="数据目录（绝对路径，留空使用默认）" title="抓取结果 JSON 文件保存目录">
     <button class="btn btn-secondary" id="btnSaveDataDir">保存路径</button>
+    <input id="bookmarkHtmlInput" class="data-dir-input" type="text" placeholder="书签 HTML 路径" title="本地书签导入文件">
+    <button class="btn btn-secondary" id="btnImportBookmarks">导入书签</button>
     <button class="btn btn-primary" onclick="openModal()">+ 添加网站</button>
   </div>
 </div>
@@ -368,9 +375,22 @@ async function loadDashboardStats() {
   } catch (e) {}
 }
 
+async function fetchJson(url, options = {}, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    const data = await res.json().catch(() => ({}));
+    return { res, data };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function loadSystemStatus() {
-  const res = await fetch('/api/system/status');
-  systemState = await res.json();
+  const { res, data } = await fetchJson('/api/system/status');
+  if (!res.ok) throw new Error('系统状态读取失败');
+  systemState = data;
   setServiceToggle(systemState.scheduler_on);
   if (systemState.crawl_running) {
     startCrawlPolling();
@@ -380,18 +400,22 @@ async function loadSystemStatus() {
 }
 
 async function loadSitesWithCrawlInfo() {
-  const res = await fetch('/api/sites');
-  const sites = await res.json();
-  await Promise.all(sites.map(async s => {
-    try {
-      const r = await fetch('/api/results/' + s.id);
-      const results = await r.json();
-      if (results.length > 0) {
-        s.crawl_count = results[0].count;
-        s.last_crawled = results[0].crawled_at;
-      }
-    } catch (e) {}
-  }));
+  const { res, data: sites } = await fetchJson('/api/sites');
+  if (!res.ok || !Array.isArray(sites)) throw new Error('站点列表读取失败');
+  renderTable(sites);
+  document.getElementById('siteCount').textContent = sites.length + ' 个网站';
+  try {
+    const summaryResult = await fetchJson('/api/results/summary');
+    if (summaryResult.res.ok && summaryResult.data && typeof summaryResult.data === 'object') {
+      sites.forEach(s => {
+        const latest = summaryResult.data[s.id];
+        if (latest) {
+          s.crawl_count = latest.count;
+          s.last_crawled = latest.crawled_at;
+        }
+      });
+    }
+  } catch (e) {}
   renderTable(sites);
   document.getElementById('siteCount').textContent = sites.length + ' 个网站';
   await loadDashboardStats();
@@ -565,12 +589,22 @@ async function showArticles(siteId, filename, liEl) {
   const data = await res.json();
   const items = data.items || [];
   articleDiv.style.display = 'block';
-  articleDiv.innerHTML = items.map(item => `<a href="${esc(item.url)}" target="_blank">${esc(item.title)}</a>`).join('');
+  articleDiv.innerHTML = items.map(item => {
+    const content = item.content ? `<div class="article-content">${esc(item.content)}</div>` : '';
+    const published = item.published ? `<div class="article-meta">${esc(String(item.published).replace('T', ' '))}</div>` : '';
+    return `
+      <div class="article-item">
+        <a class="article-title" href="${esc(item.url)}" target="_blank">${esc(item.title)}</a>
+        ${published}
+        ${content}
+      </div>
+    `;
+  }).join('');
 }
 
 async function initIntervalSelect() {
-  const res = await fetch('/api/config');
-  const cfg = await res.json();
+  const { res, data: cfg } = await fetchJson('/api/config');
+  if (!res.ok) throw new Error('配置读取失败');
   const sel = document.getElementById('intervalSelect');
   const interval = Number(cfg.crawl_interval_hours || 1);
   sel.value = String(Math.min(Math.max(interval, 1), 12));
@@ -584,6 +618,7 @@ async function initIntervalSelect() {
     showIdleStatus();
   });
   document.getElementById('dataDirInput').value = cfg.data_dir || '';
+  document.getElementById('bookmarkHtmlInput').value = cfg.bookmark_html_path || 'D:\\科情\\科情\\科情.html';
   const ageSel = document.getElementById('ageSelect');
   ageSel.value = String(cfg.max_article_age_days || 0);
   ageSel.addEventListener('change', async () => {
@@ -664,21 +699,61 @@ async function saveSite() {
 
 document.getElementById('btnServiceToggle').addEventListener('click', async () => {
   const btn = document.getElementById('btnServiceToggle');
+  const dataDirInput = document.getElementById('dataDirInput');
   btn.disabled = true;
-  const res = await fetch('/api/system/crawl-service', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ enabled: !systemState.scheduler_on })
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    alert(data.error || '操作失败');
+  try {
+    if (!systemState.scheduler_on) {
+      dataDirInput.classList.remove('error');
+      const checkRes = await fetch('/api/config/data-dir-check', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ data_dir: dataDirInput.value.trim() })
+      });
+      const checkData = await checkRes.json();
+      if (!checkRes.ok || !checkData.valid) {
+        dataDirInput.classList.add('error');
+        dataDirInput.focus();
+        alert(
+          '无法启动定时抓取：' +
+          (checkData.error || 'JSON 输出路径不可用') +
+          '\n\n请填写可用的 JSON 输出路径后重试。'
+        );
+        return;
+      }
+
+      const saveRes = await fetch('/api/config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ data_dir: dataDirInput.value.trim() })
+      });
+      if (!saveRes.ok) {
+        const saveData = await saveRes.json();
+        dataDirInput.classList.add('error');
+        alert(saveData.error || 'JSON 输出路径保存失败');
+        return;
+      }
+      dataDirInput.classList.remove('error');
+    }
+
+    const res = await fetch('/api/system/crawl-service', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ enabled: !systemState.scheduler_on })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || '操作失败');
+      return;
+    }
+    await loadSystemStatus();
+    if (!systemState.scheduler_on) {
+      await fetch('/api/crawl/stop', { method: 'POST' });
+    }
+  } catch (e) {
+    alert('无法检查 JSON 输出路径，请确认服务器正在运行。');
+  } finally {
+    btn.disabled = false;
   }
-  await loadSystemStatus();
-  if (!systemState.scheduler_on) {
-    await fetch('/api/crawl/stop', { method: 'POST' });
-  }
-  btn.disabled = false;
 });
 
 document.getElementById('btnCheckAll').addEventListener('click', async () => {
@@ -714,20 +789,64 @@ document.getElementById('btnSaveDataDir').addEventListener('click', async () => 
   btn.disabled = true;
   btn.textContent = '保存路径';
   input.classList.remove('saved', 'error');
-  const res = await fetch('/api/config', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ data_dir: input.value.trim() })
-  });
-  btn.disabled = false;
-  if (res.ok) {
+  try {
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ data_dir: input.value.trim() })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      input.classList.add('error');
+      btn.textContent = '路径无效';
+      alert(data.error || 'JSON 输出路径保存失败');
+      _dataDirTimer = setTimeout(() => {
+        input.classList.remove('error');
+        btn.textContent = '保存路径';
+      }, 3000);
+      return;
+    }
+    input.value = data.data_dir || '';
     input.classList.add('saved');
     btn.textContent = '已保存';
-    _dataDirTimer = setTimeout(() => { input.classList.remove('saved'); btn.textContent = '保存路径'; }, 2000);
-  } else {
+    _dataDirTimer = setTimeout(() => {
+      input.classList.remove('saved');
+      btn.textContent = '保存路径';
+    }, 3000);
+  } catch (e) {
     input.classList.add('error');
-    btn.textContent = '路径无效';
-    _dataDirTimer = setTimeout(() => { input.classList.remove('error'); btn.textContent = '保存路径'; }, 2000);
+    btn.textContent = '保存失败';
+    alert('JSON 输出路径保存失败，请确认服务器正在运行。');
+    _dataDirTimer = setTimeout(() => {
+      input.classList.remove('error');
+      btn.textContent = '保存路径';
+    }, 3000);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('btnImportBookmarks').addEventListener('click', async () => {
+  const input = document.getElementById('bookmarkHtmlInput');
+  const btn = document.getElementById('btnImportBookmarks');
+  btn.disabled = true;
+  btn.textContent = '导入中';
+  try {
+    const res = await fetch('/api/import/bookmarks', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ path: input.value.trim() })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || '导入失败');
+      return;
+    }
+    alert(`已导入 ${data.imported || 0} 个站点，跳过 ${data.skipped || 0} 个重复项`);
+    loadSitesWithCrawlInfo();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '导入书签';
   }
 });
 
@@ -846,9 +965,13 @@ document.addEventListener('keydown', e => {
 document.addEventListener('pointerup', resetModalBackdropPointerState);
 document.addEventListener('pointercancel', resetModalBackdropPointerState);
 
-loadSitesWithCrawlInfo();
-initIntervalSelect();
-loadSystemStatus();
+loadSitesWithCrawlInfo().catch(() => {
+  updateStatusBar('页面加载异常', null, '请检查服务器连接后刷新');
+});
+initIntervalSelect().catch(() => {});
+loadSystemStatus().catch(() => {
+  updateStatusBar('状态读取失败', null, '请检查服务器连接后刷新');
+});
 </script>
 </body>
 </html>

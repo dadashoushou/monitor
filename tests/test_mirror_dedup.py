@@ -38,7 +38,7 @@ def test_dedupe_ignores_legacy_data_dir_and_uses_mirror_titles_only(tmp_path, mo
     assert list(mirror_dir.glob("*.json")) == []
 
 
-def test_dedupe_uses_normalized_titles_within_site(tmp_path, monkeypatch):
+def test_dedupe_uses_normalized_urls_within_site(tmp_path, monkeypatch):
     mirror_dir = tmp_path / "history_mirror"
     site_id = "site-2"
     update_site_index(
@@ -55,7 +55,7 @@ def test_dedupe_uses_normalized_titles_within_site(tmp_path, monkeypatch):
     filtered = app_module._dedupe_items_with_mirror(
         site_id,
         [
-            {"title": "Repeated Headline", "url": "https://example.com/second"},
+            {"title": "Changed Headline", "url": "https://example.com/first/"},
             {"title": "Fresh Headline", "url": "https://example.com/third"},
         ],
     )
@@ -71,7 +71,7 @@ def test_crawl_one_route_dedupes_against_mirror_and_updates_title_index(tmp_path
     update_site_index(
         mirror_dir,
         site_id,
-        [{"title": "Existing Title", "url": "https://example.com/old"}],
+        [{"title": "Existing Title", "url": "https://example.com/article-1"}],
         updated_at="2026-04-20T08:00:00",
         site_url="https://example.com",
     )
@@ -138,3 +138,7 @@ def test_crawl_one_route_dedupes_against_mirror_and_updates_title_index(tmp_path
     assert index_payload["site_url"] == "https://example.com"
     assert index_payload["updated_at"]
     assert index_payload["titles"] == ["Existing Title", "New Title"]
+    assert index_payload["urls"] == [
+        "https://example.com/article-1",
+        "https://example.com/article-2",
+    ]

@@ -33,6 +33,27 @@ def test_root_homepage_uses_history_drawer_and_split_status_fields():
     assert "function openHistoryDrawer()" in page
 
 
+def test_root_homepage_renders_sites_before_history_requests_finish():
+    app_module.app.config["TESTING"] = True
+
+    with app_module.app.test_client() as client:
+        page = client.get("/").get_data(as_text=True)
+
+    load_match = re.search(
+        r"async function loadSitesWithCrawlInfo\(\) \{.*?\n\}",
+        page,
+        re.S,
+    )
+
+    assert load_match
+    load_source = load_match.group(0)
+    assert load_source.index("renderTable(sites);") < load_source.index(
+        "await fetchJson('/api/results/summary')"
+    )
+    assert "sites.forEach(s => {" in load_source
+    assert "await Promise.all" not in load_source
+
+
 def test_root_homepage_groups_toolbar_actions_for_clearer_hierarchy():
     app_module.app.config["TESTING"] = True
 
@@ -58,6 +79,10 @@ def test_root_homepage_exposes_service_toggle_and_pause_controls():
     assert 'function setServiceToggle(enabled)' in page
     assert 'data-action="pause"' in page
     assert "async function toggleSiteCrawl(id, paused)" in page
+    assert "api/config/data-dir-check" in page
+    assert "请填写可用的 JSON 输出路径后重试" in page
+    assert "input.value = data.data_dir || '';" in page
+    assert "JSON 输出路径保存失败" in page
 
 
 def test_root_homepage_exposes_rolling_day_week_month_stats_card():

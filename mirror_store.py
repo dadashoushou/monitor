@@ -1,6 +1,7 @@
 import json
 import re
 from pathlib import Path
+from urllib.parse import urldefrag, urlparse, urlunparse
 
 
 _SPACE_RE = re.compile(r'\s+')
@@ -8,6 +9,20 @@ _SPACE_RE = re.compile(r'\s+')
 
 def normalize_title(title: str) -> str:
     return _SPACE_RE.sub(' ', (title or '').strip())
+
+
+def normalize_url(url: str) -> str:
+    raw = (url or '').strip()
+    if not raw:
+        return ''
+    raw, _fragment = urldefrag(raw)
+    parsed = urlparse(raw)
+    scheme = parsed.scheme.lower()
+    netloc = parsed.netloc.lower()
+    path = parsed.path or ''
+    if path != '/':
+        path = path.rstrip('/')
+    return urlunparse((scheme, netloc, path, '', parsed.query, ''))
 
 
 def iter_site_payloads(snapshot: dict):
@@ -34,6 +49,7 @@ def load_site_index(index_dir: Path, site_id: str) -> dict:
             'site_url': '',
             'updated_at': None,
             'titles': [],
+            'urls': [],
         }
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
@@ -44,17 +60,19 @@ def load_site_index(index_dir: Path, site_id: str) -> dict:
             'site_url': '',
             'updated_at': None,
             'titles': [],
+            'urls': [],
         }
     return {
         'site_id': data.get('site_id') or site_id,
         'site_url': data.get('site_url', ''),
         'updated_at': data.get('updated_at'),
         'titles': list(data.get('titles', [])),
+        'urls': list(data.get('urls', [])),
     }
 
 
 def save_site_index(index_dir: Path, site_id: str, site_url: str, titles: list[str],
-                    updated_at: str | None = None):
+                    urls: list[str] | None = None, updated_at: str | None = None):
     index_dir.mkdir(parents=True, exist_ok=True)
     filepath = _site_index_path(index_dir, site_id)
     payload = {
@@ -62,6 +80,7 @@ def save_site_index(index_dir: Path, site_id: str, site_url: str, titles: list[s
         'site_url': site_url,
         'updated_at': updated_at,
         'titles': titles,
+        'urls': urls or [],
     }
     with open(filepath, 'w', encoding='utf-8') as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
@@ -71,44 +90,64 @@ def update_site_index(index_dir: Path, site_id: str, items: list[dict],
                       updated_at: str | None = None, site_url: str = ''):
     existing = load_site_index(index_dir, site_id)
     title_map: dict[str, str] = {}
+    url_map: dict[str, str] = {}
 
     for title in existing.get('titles', []):
         normalized = normalize_title(title)
         if normalized and normalized not in title_map:
             title_map[normalized] = title
 
+    for url in existing.get('urls', []):
+        normalized = normalize_url(url)
+        if normalized and normalized not in url_map:
+            url_map[normalized] = url
+
     for item in items:
         raw_title = (item.get('title') or '').strip()
         normalized = normalize_title(raw_title)
         if normalized and normalized not in title_map:
             title_map[normalized] = raw_title
+        raw_url = (item.get('url') or '').strip()
+        normalized_url = normalize_url(raw_url)
+        if normalized_url and normalized_url not in url_map:
+            url_map[normalized_url] = raw_url
 
     save_site_index(
         index_dir,
         site_id,
         site_url or existing.get('site_url', ''),
         list(title_map.values()),
+        list(url_map.values()),
         updated_at=updated_at,
     )
 
 
+def load_known_urls(index_dir: Path, site_id: str) -> set[str]:
+    existing = load_site_index(index_dir, site_id)
+    return {
+        normalized
+        for normalized in (normalize_url(url) for url in existing.get('urls', []))
+        if normalized
+    }
+
+
 def filter_new_items(index_dir: Path, site_id: str, items: list[dict]) -> list[dict]:
     existing = load_site_index(index_dir, site_id)
-    historical_titles = {
+    historical_urls = {
         normalized
-        for normalized in (normalize_title(title) for title in existing.get('titles', []))
+        for normalized in (normalize_url(url) for url in existing.get('urls', []))
         if normalized
     }
 
     filtered = []
-    batch_titles: set[str] = set()
+    batch_urls: set[str] = set()
     for item in items:
-        normalized = normalize_title(item.get('title', ''))
-        if normalized and (normalized in historical_titles or normalized in batch_titles):
+        normalized_url = normalize_url(item.get('url', ''))
+        if normalized_url and (normalized_url in historical_urls or normalized_url in batch_urls):
             continue
         filtered.append(item)
-        if normalized:
-            batch_titles.add(normalized)
+        if normalized_url:
+            batch_urls.add(normalized_url)
     return filtered
 
 

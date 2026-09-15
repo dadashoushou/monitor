@@ -17,6 +17,18 @@ raw/
 mirror-data/
 history_mirror/
 
+# Local environments, test scratch space, and generated audit exports
+.venv/
+.pytest-*/
+pytest-cache-files-*/
+tmp*/
+test-output-json*/
+*.crawl-result-*.json
+*_crawl_result_*.json
+airandspaceforces-crawl-result-*.json
+defensenews-crawl-result-*.json
+crawl_content_audit_*.md
+
 frontend/config.json
 frontend/state.json
 frontend/.tmp-tests/
