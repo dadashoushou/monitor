@@ -21,6 +21,7 @@ if not exist "%PYTHON_EXE%" (
 
 cd /d "%SCRIPT_DIR%"
 echo Running: "%PYTHON_EXE%" app.py
+echo Open: http://127.0.0.1:5001
 "%PYTHON_EXE%" app.py
 
 if errorlevel 1 (

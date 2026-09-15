@@ -112,3 +112,41 @@ def test_root_homepage_interval_select_offers_1_to_12_hours():
         assert f'<option value="{hour}"' in page
     assert '<option value="24"' not in page
     assert "const interval = Number(cfg.crawl_interval_hours || 1);" in page
+
+
+def test_root_homepage_exposes_two_stage_article_rule_fields():
+    app_module.app.config["TESTING"] = True
+
+    with app_module.app.test_client() as client:
+        page = client.get("/").get_data(as_text=True)
+
+    assert 'id="fContentSelector"' in page
+    assert 'id="fArticleCrawlMode"' in page
+    assert 'id="btnRulePreview"' in page
+    assert "function getContentSelectorValue()" in page
+    assert "Array.isArray(s.content_selector)" in page
+    assert "content_selector: getContentSelectorValue()" in page
+    assert "article_crawl_mode: document.getElementById('fArticleCrawlMode').value" in page
+    assert "/rule-preview" in page
+
+
+def test_root_homepage_exposes_site_output_test_button():
+    app_module.app.config["TESTING"] = True
+
+    with app_module.app.test_client() as client:
+        page = client.get("/").get_data(as_text=True)
+
+    assert 'data-action="output-test"' in page
+    assert "async function testSiteOutput(id)" in page
+    assert "/output-test" in page
+
+
+def test_root_homepage_keeps_ai_analysis_only_in_edit_modal():
+    app_module.app.config["TESTING"] = True
+
+    with app_module.app.test_client() as client:
+        page = client.get("/").get_data(as_text=True)
+
+    assert 'id="btnAnalyze"' in page
+    assert 'onclick="analyzeSite()"' in page
+    assert 'data-action="analyze"' not in page

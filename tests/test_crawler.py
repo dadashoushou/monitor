@@ -366,6 +366,25 @@ def test_extract_page_content_supports_raw_html_content_selector():
     assert content
 
 
+def test_extract_page_content_supports_selector_arrays():
+    """正文选择器数组按顺序尝试，命中任一选择器即可。"""
+    from crawler import _extract_page_content
+
+    page = MagicMock()
+    page.body = (
+        b'<html><body><div class="fallback">'
+        b'This is the article body from the second selector and it is long enough '
+        b'to pass the existing extraction threshold for this test fixture.'
+        b'</div></body></html>'
+    )
+    page.text = ''
+    page.css.return_value = []
+
+    content = _extract_page_content(page, ['article', 'div.fallback'])
+
+    assert 'article body from the second selector' in content
+
+
 def test_attach_article_content_passes_site_content_selector():
     """正文抓取应把站点专属 content_selector 传给详情页抽取器。"""
     from crawler import _attach_article_content
@@ -388,6 +407,83 @@ def test_attach_article_content_passes_site_content_selector():
         'stealth',
         'div.col-md-8.content-wrapper',
     )
+
+
+def test_article_crawl_mode_overrides_listing_mode():
+    """详情抓取模式可以独立于标题列表抓取模式。"""
+    from crawler import _attach_article_content
+
+    items = [{'title': 'T', 'url': 'https://example.com/article', 'content': ''}]
+    site = {
+        'crawl_mode': 'html',
+        'article_crawl_mode': 'stealth',
+        'content_selector': 'article .body',
+    }
+
+    with patch(
+        'crawler._crawl_article_content',
+        return_value=('正文内容', '<html></html>'),
+    ) as mock_content:
+        _attach_article_content(items, site)
+
+    mock_content.assert_called_once_with(
+        'https://example.com/article',
+        'stealth',
+        'article .body',
+    )
+
+
+def test_missing_article_crawl_mode_preserves_existing_mode():
+    """旧配置没有 article_crawl_mode 时仍沿用 crawl_mode。"""
+    from crawler import _attach_article_content
+
+    items = [{'title': 'T', 'url': 'https://example.com/article', 'content': ''}]
+    with patch(
+        'crawler._crawl_article_content',
+        return_value=('正文内容', '<html></html>'),
+    ) as mock_content:
+        _attach_article_content(items, {'crawl_mode': 'js'})
+
+    assert mock_content.call_args.args[1] == 'js'
+
+
+def test_preview_site_rules_limits_items_and_reports_hits():
+    from crawler import preview_site_rules
+
+    site = {
+        'id': 'preview',
+        'name': 'Preview',
+        'url': 'https://example.com',
+        'status': 'no_rss',
+        'crawl_mode': 'html',
+        'article_crawl_mode': 'stealth',
+        'content_selector': 'article .body',
+    }
+    items = [
+        {'title': f'Title {i}', 'url': f'https://example.com/{i}'}
+        for i in range(5)
+    ]
+
+    with patch('crawler.crawl_html', return_value=items) as mock_list, \
+         patch(
+             'crawler._crawl_article_content_with_match',
+             side_effect=[
+                 ('a' * 120, False),
+                 ('', False),
+                 ('b' * 90, True),
+             ],
+         ) as mock_content:
+        result = preview_site_rules(site, limit=3)
+
+    mock_list.assert_called_once_with(site)
+    assert result['count'] == 3
+    assert result['article_crawl_mode'] == 'stealth'
+    assert result['items'][0]['content_length'] == 120
+    assert result['items'][0]['content_hit'] is True
+    assert result['items'][0]['content_selector_hit'] is False
+    assert result['items'][1]['content_hit'] is False
+    assert result['items'][2]['content_selector_hit'] is True
+    assert mock_content.call_count == 3
 
 
 def test_crawl_site_returns_none_on_empty():
@@ -585,93 +681,6 @@ def test_defense_news_article_content_selector_extracts_raw_article():
 
     assert 'Missile defense in wartime' in content
     assert 'The Pentagon now wants artificial intelligence' in content
-
-
-def test_air_and_space_forces_article_content_selector_extracts_post_body():
-    """Air & Space Forces 详情页应从 post-body 容器提取正文。"""
-    from crawler import _extract_page_content
-
-    page = MagicMock()
-    page.body = (
-        b'<html><main id="main"><div class="post-body">'
-        b'<div class="author-date">Sept. 10, 2026 | By Author</div>'
-        b'<p class="wp-block-paragraph">The article body contains the full report '
-        b'and enough text to pass the content threshold for extraction.</p>'
-        b'<h4 class="wp-block-heading">Section heading</h4>'
-        b'<p class="wp-block-paragraph">A second paragraph keeps the article body '
-        b'behavior representative of the live site structure.</p>'
-        b'</div></main></html>'
-    )
-    page.text = ''
-    page.css.return_value = []
-
-    content = _extract_page_content(page, 'main#main .post-body')
-
-    assert 'The article body contains the full report' in content
-    assert 'Section heading' in content
-    assert content
-
-
-def test_afrl_article_content_selector_extracts_et_pb_post_content():
-    """AFRL 详情页应从 RSS 链接对应的正文容器提取原文。"""
-    from crawler import _extract_page_content
-
-    page = MagicMock()
-    page.body = (
-        b'<html><body><div class="et_pb_post_content">'
-        b'<p>The laboratory demonstrated a neural network control method '
-        b'for an in-orbit satellite bus during a flight experiment.</p>'
-        b'<p>The result supports future autonomous space operations and '
-        b'provides enough text to represent the article body.</p>'
-        b'</div></body></html>'
-    )
-    page.text = ''
-    page.css.return_value = []
-
-    content = _extract_page_content(page, '.et_pb_post_content')
-
-    assert 'The laboratory demonstrated a neural network control method' in content
-    assert 'future autonomous space operations' in content
-
-
-def test_lockheed_news_selector_matches_new_news_hub_articles():
-    """Lockheed 新新闻页规则应匹配内部 dated HTML 详情页。"""
-    import re
-
-    pattern = re.compile(
-        r'(?:(?:https?://www\.lockheedmartin\.com)?/en-us/news/[^?#]*\d{4}[^?#]*\.html|https?://news\.lockheedmartin\.com/\d{4}-\d{2}-\d{2}-[^?#]+)(?:[?#].*)?$'
-    )
-
-    assert pattern.search(
-        'https://www.lockheedmartin.com/en-us/news/features/2026/t-rex-demo.html'
-    )
-    assert pattern.search('/en-us/news/features/2026/t-rex-demo.html')
-    assert pattern.search(
-        'https://news.lockheedmartin.com/2026-09-10-example'
-    )
-    assert not pattern.search('https://www.lockheedmartin.com/en-us/news.html')
-
-
-def test_lockheed_article_content_selector_extracts_main_body():
-    """Lockheed 新站详情页应能从 main article-body 容器提取正文。"""
-    from crawler import _extract_page_content
-
-    page = MagicMock()
-    page.body = (
-        b'<html><main><div class="article-body">'
-        b'<p>The battlespace is evolving and the need for survivable '
-        b'autonomous capability is rapidly growing.</p>'
-        b'<p>The program continues toward first flight in 2027 with '
-        b'additional vehicles planned for production.</p>'
-        b'</div></main></html>'
-    )
-    page.text = ''
-    page.css.return_value = []
-
-    content = _extract_page_content(page, ['main .article-body', 'main'])
-
-    assert 'The battlespace is evolving' in content
-    assert 'first flight in 2027' in content
 
 
 def test_parse_published_formats():

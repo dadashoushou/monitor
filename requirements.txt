@@ -12,3 +12,4 @@ scrapling[fetchers]
 pytest
 # Helper script dependency for analyze_sites.py
 beautifulsoup4==4.12.3
+translators

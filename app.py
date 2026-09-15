@@ -1,7 +1,7 @@
 """
 openmonitor 后端管理界面
 运行: python app.py
-访问: http://localhost:5000
+访问: http://localhost:5001
 """
 import json
 import uuid
@@ -18,7 +18,11 @@ import feedparser
 from urllib.parse import urljoin
 from apscheduler.schedulers.background import BackgroundScheduler
 from bs4 import BeautifulSoup
-from crawler import crawl_site as _crawl_site, crawl_all as _crawl_all
+from crawler import (
+    crawl_site as _crawl_site,
+    crawl_all as _crawl_all,
+    preview_site_rules as _preview_site_rules,
+)
 from ai_analyzer import analyze_page as _analyze_page
 from mirror_store import filter_new_items, ingest_snapshot, load_known_urls, update_site_index
 
@@ -267,6 +271,124 @@ def _write_json(filepath: Path, payload: dict):
         json.dump(payload, f, ensure_ascii=False, indent=2)
 
 
+def _is_translation_enabled(cfg: dict | None = None) -> bool:
+    if cfg is None and app.config.get('TESTING'):
+        return False
+    cfg = cfg or load_config()
+    translation_cfg = cfg.get('translation') or {}
+    return bool(translation_cfg.get('enabled', False))
+
+
+def _get_translation_config(cfg: dict | None = None) -> dict:
+    cfg = cfg or load_config()
+    translation_cfg = dict(cfg.get('translation') or {})
+    translation_cfg.setdefault('engine', 'google')
+    translation_cfg.setdefault('from_language', 'en')
+    translation_cfg.setdefault('to_language', 'zh')
+    translation_cfg.setdefault('max_chunk_chars', 4000)
+    return translation_cfg
+
+
+def _translate_text(text: str, translation_cfg: dict) -> str:
+    text = (text or '').strip()
+    if not text:
+        return ''
+
+    # translators probes network during import unless this is set first.
+    os.environ.setdefault('translators_default_region', 'EN')
+    import translators as ts
+
+    return ts.translate_text(
+        query_text=text,
+        translator=translation_cfg.get('engine', 'google'),
+        from_language=translation_cfg.get('from_language', 'en'),
+        to_language=translation_cfg.get('to_language', 'zh'),
+    )
+
+
+def _split_translation_chunks(text: str, max_chars: int) -> list[str]:
+    text = (text or '').strip()
+    if not text:
+        return []
+    max_chars = max(int(max_chars or 4000), 500)
+    paragraphs = re.split(r'\n{2,}', text)
+    chunks: list[str] = []
+    current = ''
+    for paragraph in paragraphs:
+        paragraph = paragraph.strip()
+        if not paragraph:
+            continue
+        if len(paragraph) > max_chars:
+            if current:
+                chunks.append(current)
+                current = ''
+            chunks.extend(
+                paragraph[i:i + max_chars]
+                for i in range(0, len(paragraph), max_chars)
+            )
+            continue
+        candidate = f"{current}\n\n{paragraph}" if current else paragraph
+        if len(candidate) > max_chars:
+            chunks.append(current)
+            current = paragraph
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _translate_long_text(text: str, translation_cfg: dict) -> tuple[str, str | None]:
+    chunks = _split_translation_chunks(
+        text,
+        translation_cfg.get('max_chunk_chars', 4000),
+    )
+    if not chunks:
+        return '', None
+    translated_chunks = []
+    try:
+        for chunk in chunks:
+            translated_chunks.append(_translate_text(chunk, translation_cfg))
+    except Exception as exc:
+        return '', str(exc)
+    return '\n\n'.join(translated_chunks), None
+
+
+def _translate_result(result: dict, cfg: dict | None = None) -> dict:
+    if not result or not _is_translation_enabled(cfg):
+        return result
+
+    translation_cfg = _get_translation_config(cfg)
+    translated_at = datetime.now().isoformat(timespec='seconds')
+    for item in result.get('items', []):
+        title = item.get('title') or ''
+        content = item.get('content') or ''
+        title_zh, title_error = _translate_long_text(title, translation_cfg)
+        content_zh, content_error = _translate_long_text(content, translation_cfg)
+
+        item['title_zh'] = title_zh
+        item['content_zh'] = content_zh
+        status = 'success'
+        errors = []
+        if title_error:
+            errors.append(f'title: {title_error}')
+        if content_error:
+            errors.append(f'content: {content_error}')
+        if errors:
+            status = 'failed' if not title_zh and not content_zh else 'partial'
+        item['translation'] = {
+            'provider': 'translators',
+            'engine': translation_cfg.get('engine', 'google'),
+            'source_language': translation_cfg.get('from_language', 'en'),
+            'target_language': translation_cfg.get('to_language', 'zh'),
+            'status': status,
+            'translated_at': translated_at,
+        }
+        if errors:
+            item['translation']['error'] = '; '.join(errors)
+    return result
+
+
 def _reset_mirror_bootstrap():
     global _mirror_initialized
     with _mirror_init_lock:
@@ -301,6 +423,7 @@ def _save_single_result(site_id: str, result: dict) -> dict:
     ts = crawled_at.replace(':', '-').replace('T', '_')
     filename = f"{ts}_{re.sub(r'[^\w\-]', '_', site_id)}.json"
     result['crawled_at'] = crawled_at
+    result = _translate_result(result)
     _write_json(get_data_dir() / filename, result)
     _write_json(get_mirror_snapshots_dir() / filename, result)
     update_site_index(
@@ -356,6 +479,7 @@ def run_crawl_all():
         get_data_dir(),
         dedupe_cb=_dedupe_items_with_mirror,
         save_hook=_save_batch_snapshot_to_mirror,
+        transform_cb=lambda result: _translate_result(result, cfg),
         should_stop=crawl_stop_event.is_set,
         progress_cb=_progress,
     )
@@ -402,6 +526,10 @@ def load_sites():
         sites = json.load(f)
     for site in sites:
         site.setdefault('crawl_paused', False)
+        site.setdefault('content_selector', None)
+        site.setdefault('article_crawl_mode', 'auto')
+        site.setdefault('content_selector_generated_by', None)
+        site.setdefault('content_selector_generated_at', None)
     return sites
 
 
@@ -426,6 +554,74 @@ def _normalize_url(url: str) -> str:
     return url
 
 
+def _normalize_article_crawl_mode(value, default='auto') -> str:
+    return value if value in ('auto', 'html', 'js', 'stealth') else default
+
+
+def _normalize_content_selector(value):
+    if isinstance(value, str):
+        return value.strip() or None
+    if isinstance(value, list):
+        selectors = [
+            item.strip()
+            for item in value
+            if isinstance(item, str) and item.strip()
+        ]
+        return selectors or None
+    return value
+
+
+def _test_report_path(site_name: str) -> Path:
+    """返回桌面上的站点测试报告路径。"""
+    safe_name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', (site_name or '').strip())
+    safe_name = safe_name.rstrip('. ') or '未命名网站'
+    return Path.home() / 'Desktop' / f'{safe_name}.txt'
+
+
+def _write_site_test_report(site: dict, result: dict | None, error: str = '') -> Path:
+    report_path = _test_report_path(site.get('name', ''))
+    lines = [
+        f"网站名称：{site.get('name', '')}",
+        f"网站 URL：{site.get('url', '')}",
+        f"测试时间：{datetime.now().isoformat(timespec='seconds')}",
+        f"列表抓取模式：{site.get('crawl_mode', 'auto')}",
+        f"详情抓取模式：{site.get('article_crawl_mode') or '沿用列表模式'}",
+        f"标题列表选择器：{json.dumps(site.get('selectors'), ensure_ascii=False)}",
+        f"正文容器选择器：{json.dumps(site.get('content_selector'), ensure_ascii=False)}",
+        "",
+    ]
+    if error:
+        lines.extend(["测试状态：失败", f"错误：{error}"])
+    elif not result:
+        lines.extend(["测试状态：未抓取到文章", "说明：没有提取到可测试的文章链接。"])
+    else:
+        items = result.get('items') or []
+        hit_count = sum(1 for item in items if item.get('content'))
+        lines.extend([
+            "测试状态：成功",
+            f"列表抓取方法：{result.get('method', '')}",
+            f"文章数量：{len(items)}",
+            f"有正文文章数：{hit_count}",
+            "",
+        ])
+        for index, item in enumerate(items, 1):
+            content = item.get('content') or ''
+            lines.extend([
+                f"--- 文章 {index} ---",
+                f"标题：{item.get('title', '')}",
+                f"URL：{item.get('url', '')}",
+                f"发布时间：{item.get('published') or ''}",
+                f"正文长度：{len(content)}",
+                "正文：",
+                content[:3000] if content else "(未提取到正文)",
+                "",
+            ])
+
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text('\n'.join(lines), encoding='utf-8')
+    return report_path
+
+
 @app.route('/api/sites', methods=['POST'])
 def add_site():
     data = request.get_json()
@@ -448,8 +644,20 @@ def add_site():
         'status': 'pending',
         'last_checked': None,
         'crawl_mode': crawl_mode,
+        'article_crawl_mode': _normalize_article_crawl_mode(
+            data.get('article_crawl_mode', 'auto')
+        ),
         'crawl_paused': False,
         'selectors': data.get('selectors'),
+        'content_selector': _normalize_content_selector(
+            data.get('content_selector')
+        ),
+        'content_selector_generated_by': data.get(
+            'content_selector_generated_by'
+        ),
+        'content_selector_generated_at': data.get(
+            'content_selector_generated_at'
+        ),
     }
     sites.append(site)
     save_sites(sites)
@@ -471,8 +679,25 @@ def update_site(site_id):
                 mode = data['crawl_mode']
                 if mode in ('auto', 'html', 'js', 'stealth'):
                     site['crawl_mode'] = mode
+            if 'article_crawl_mode' in data:
+                site['article_crawl_mode'] = _normalize_article_crawl_mode(
+                    data['article_crawl_mode'],
+                    site.get('article_crawl_mode', 'auto'),
+                )
             if 'selectors' in data:
                 site['selectors'] = data['selectors']
+            if 'content_selector' in data:
+                site['content_selector'] = _normalize_content_selector(
+                    data['content_selector']
+                )
+            if 'content_selector_generated_by' in data:
+                site['content_selector_generated_by'] = data[
+                    'content_selector_generated_by'
+                ]
+            if 'content_selector_generated_at' in data:
+                site['content_selector_generated_at'] = data[
+                    'content_selector_generated_at'
+                ]
             if 'crawl_paused' in data:
                 site['crawl_paused'] = bool(data['crawl_paused'])
             save_sites(sites)
@@ -556,8 +781,12 @@ def import_bookmarks():
             'status': 'pending',
             'last_checked': None,
             'crawl_mode': 'auto',
+            'article_crawl_mode': 'auto',
             'crawl_paused': False,
             'selectors': None,
+            'content_selector': None,
+            'content_selector_generated_by': None,
+            'content_selector_generated_at': None,
         }
         sites.append(site)
         existing_urls.add(normalized_url)
@@ -574,6 +803,35 @@ def import_bookmarks():
         'total_found': len(bookmark_items),
         'path': raw_path,
     })
+
+
+@app.route('/api/sites/<site_id>/rule-preview', methods=['POST'])
+def preview_site_rules(site_id):
+    sites = load_sites()
+    site = next((s for s in sites if s['id'] == site_id), None)
+    if not site:
+        return jsonify({'error': '未找到'}), 404
+
+    data = request.get_json(silent=True) or {}
+    preview_site = {**site}
+    if 'content_selector' in data:
+        preview_site['content_selector'] = _normalize_content_selector(
+            data['content_selector']
+        )
+    if 'article_crawl_mode' in data:
+        preview_site['article_crawl_mode'] = _normalize_article_crawl_mode(
+            data['article_crawl_mode'],
+            site.get('article_crawl_mode', 'auto'),
+        )
+
+    try:
+        limit = int(data.get('limit', 3))
+        result = _preview_site_rules(preview_site, limit=limit)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'limit 必须是整数'}), 400
+    except Exception as exc:
+        return jsonify({'error': f'规则预览失败: {exc}'}), 502
+    return jsonify(result)
 
 
 HEADERS = {'User-Agent': 'Mozilla/5.0 (compatible; RSS-checker/1.0)'}
@@ -742,6 +1000,41 @@ def crawl_one_route(site_id):
     if result and result.get('items'):
         _save_single_result(site['id'], result)
     return jsonify(result if result else {'count': 0})
+
+
+@app.route('/api/sites/<site_id>/output-test', methods=['POST'])
+def output_site_test(site_id):
+    sites = load_sites()
+    site = next((s for s in sites if s['id'] == site_id), None)
+    if not site:
+        return jsonify({'error': '未找到'}), 404
+
+    test_site = {
+        **site,
+        'crawl_paused': False,
+        'max_items': min(max(int(site.get('max_items', 5)), 1), 5),
+        '_skip_urls': [],
+    }
+    try:
+        result = _crawl_site(test_site)
+        report_path = _write_site_test_report(test_site, result)
+    except Exception as exc:
+        report_path = _write_site_test_report(test_site, None, str(exc))
+        return jsonify({
+            'ok': False,
+            'error': str(exc),
+            'report_path': str(report_path),
+        }), 502
+
+    return jsonify({
+        'ok': True,
+        'report_path': str(report_path),
+        'count': result.get('count', 0) if result else 0,
+        'content_count': sum(
+            1 for item in (result or {}).get('items', [])
+            if item.get('content')
+        ),
+    })
 
 
 @app.route('/api/config', methods=['GET'])
@@ -1023,4 +1316,4 @@ if __name__ == '__main__':
     import os
     if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not app.debug:
         _start_scheduler()
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5001)

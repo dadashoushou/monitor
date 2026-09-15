@@ -136,9 +136,21 @@ def _extract_raw_html_content(page, content_selector: str | list[str] | None) ->
 
 
 def _extract_page_content(page, content_selector: str | list[str] | None = None) -> str:
+    content, _selector_hit = _extract_page_content_with_match(
+        page,
+        content_selector,
+    )
+    return content
+
+
+def _extract_page_content_with_match(
+    page,
+    content_selector: str | list[str] | None = None,
+) -> tuple[str, bool]:
+    """返回正文和是否命中指定 content_selector。"""
     raw_content = _extract_raw_html_content(page, content_selector)
     if raw_content:
-        return raw_content
+        return raw_content, True
 
     text_chunks: list[str] = []
     seen: set[str] = set()
@@ -163,17 +175,17 @@ def _extract_page_content(page, content_selector: str | list[str] | None = None)
             break
 
     if text_chunks:
-        return '\n\n'.join(text_chunks)
+        return '\n\n'.join(text_chunks), False
 
     try:
         body = page.css('body')
         if body:
             text = _clean_text(body[0].text or '')
-            return text
+            return text, False
     except Exception:
         pass
 
-    return ''
+    return '', False
 
 
 def _crawl_article_content(
@@ -205,17 +217,61 @@ def _crawl_article_content(
     return content, getattr(page, 'body', '') if hasattr(page, 'body') else ''
 
 
+def _crawl_article_content_with_match(
+    url: str,
+    fetcher='html',
+    content_selector: str | list[str] | None = None,
+) -> tuple[str, bool]:
+    """详情页抓取预览专用：返回正文和指定选择器是否命中。"""
+    if not (url or '').startswith(('http://', 'https://')):
+        return '', False
+    try:
+        if fetcher == 'js':
+            page = DynamicFetcher.fetch(
+                url,
+                headless=True, network_idle=True, disable_resources=True, timeout=30000
+            )
+        elif fetcher == 'stealth':
+            page = StealthyFetcher.fetch(
+                url,
+                headless=True, network_idle=True, disable_resources=True, timeout=30000
+            )
+        else:
+            page = Fetcher.get(url, timeout=15)
+    except Exception:
+        return '', False
+
+    content, selector_hit = _extract_page_content_with_match(
+        page,
+        content_selector,
+    )
+    if not content:
+        content = _clean_text(page.text or '') if getattr(page, 'text', None) else ''
+    return content, selector_hit
+
+
+def _resolve_article_crawl_mode(site: dict, listing_method: str | None = None) -> str:
+    """解析详情页抓取模式；缺少新字段时保持旧 crawl_mode 行为。"""
+    configured = site.get('article_crawl_mode')
+    if configured in ('html', 'js', 'stealth'):
+        return configured
+
+    listing_mode = site.get('crawl_mode', 'auto')
+    if listing_mode in ('html', 'js', 'stealth'):
+        return listing_mode
+    if listing_method in ('html', 'js', 'stealth'):
+        return listing_method
+    return 'html'
+
+
 def _attach_article_content(items: list[dict], site: dict) -> list[dict]:
     if not items:
         return items
 
-    mode = site.get('crawl_mode', 'auto')
-    if mode == 'auto':
-        article_fetcher = 'html'
-    elif mode in ('html', 'js', 'stealth'):
-        article_fetcher = mode
-    else:
-        article_fetcher = 'html'
+    article_fetcher = _resolve_article_crawl_mode(
+        site,
+        listing_method=site.get('_listing_method'),
+    )
 
     max_article_body_len = site.get('max_article_body_len', 0)
     for item in items:
@@ -230,6 +286,63 @@ def _attach_article_content(items: list[dict], site: dict) -> list[dict]:
             content = content[:max_article_body_len]
         item['content'] = content
     return items
+
+
+def _listing_items_for_preview(site: dict, limit: int) -> tuple[list[dict], str]:
+    """按站点当前列表配置提取少量文章，供规则预览使用。"""
+    if site.get('status') == 'rss':
+        items = crawl_rss(site)
+        return items[:limit], 'rss'
+
+    mode = site.get('crawl_mode', 'auto')
+    if mode in ('js', 'stealth'):
+        items = crawl_js(site) if mode == 'js' else crawl_stealth(site)
+        return items[:limit], mode
+
+    items = crawl_html(site)
+    return items[:limit], 'html'
+
+
+def preview_site_rules(site: dict, limit: int = 3) -> dict:
+    """抓取少量列表文章并报告详情页正文规则命中情况。"""
+    limit = min(max(int(limit), 1), 10)
+    items, listing_method = _listing_items_for_preview(site, limit)
+    article_mode = _resolve_article_crawl_mode(site, listing_method)
+    preview_items = []
+
+    for item in items:
+        content, selector_hit = _crawl_article_content_with_match(
+            item.get('url', ''),
+            article_mode,
+            site.get('content_selector'),
+        )
+        preview_items.append({
+            'title': item.get('title', ''),
+            'url': item.get('url', ''),
+            'content_length': len(content),
+            'content_hit': bool(content),
+            'content_selector_hit': selector_hit,
+            'article_crawl_mode': article_mode,
+            'mode': article_mode,
+            'hit': bool(content),
+            'selector_hit': selector_hit,
+        })
+
+    return {
+        'site_id': site.get('id'),
+        'site_name': site.get('name', ''),
+        'listing_method': listing_method,
+        'article_crawl_mode': article_mode,
+        'content_selector': site.get('content_selector'),
+        'content_selector_generated_by': site.get(
+            'content_selector_generated_by'
+        ),
+        'content_selector_generated_at': site.get(
+            'content_selector_generated_at'
+        ),
+        'count': len(preview_items),
+        'items': preview_items,
+    }
 
 
 def _extract_articles(page, site_url: str, selectors: dict = None,
@@ -440,7 +553,10 @@ def crawl_site(site: dict) -> dict | None:
         article_mode = site.get('crawl_mode', 'auto')
         if article_mode == 'auto':
             article_mode = 'html' if method == 'rss' else method
-        items = _attach_article_content(items, {**site, 'crawl_mode': article_mode})
+        items = _attach_article_content(
+            items,
+            {**site, 'crawl_mode': article_mode, '_listing_method': method},
+        )
 
     if not items:
         return None
@@ -457,6 +573,7 @@ def crawl_site(site: dict) -> dict | None:
 
 def crawl_all(sites: list[dict], data_dir: Path,
               prev_urls_loader=None, dedupe_cb=None, save_hook=None,
+              transform_cb=None,
               should_stop=None, progress_cb=None) -> list[dict]:
     """按模式分组并发抓取：静态(rss/html/auto) max_workers=5，动态(js/stealth) max_workers=2"""
     static_sites = []
@@ -532,6 +649,9 @@ def crawl_all(sites: list[dict], data_dir: Path,
                 result['count'] = len(result['items'])
 
     results = [result for result in results if result.get('count', 0) > 0]
+
+    if transform_cb:
+        results = [transform_cb(result) for result in results]
 
     if results:
         data_dir.mkdir(parents=True, exist_ok=True)

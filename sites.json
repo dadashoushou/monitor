@@ -15,7 +15,11 @@
       "url_pattern": "/news/[^/]+/$",
       "min_title_len": 12,
       "max_title_len": 180
-    }
+    },
+    "content_selector": null,
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 2,
@@ -33,7 +37,11 @@
       "url_pattern": "/news/[^/]+/$",
       "min_title_len": 12,
       "max_title_len": 180
-    }
+    },
+    "content_selector": null,
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 3,
@@ -46,7 +54,11 @@
     "last_checked": null,
     "crawl_mode": "auto",
     "crawl_paused": false,
-    "selectors": null
+    "selectors": null,
+    "content_selector": null,
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 4,
@@ -59,7 +71,11 @@
     "last_checked": null,
     "crawl_mode": "auto",
     "crawl_paused": false,
-    "selectors": null
+    "selectors": null,
+    "content_selector": null,
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 5,
@@ -72,7 +88,11 @@
     "last_checked": null,
     "crawl_mode": "auto",
     "crawl_paused": false,
-    "selectors": null
+    "selectors": null,
+    "content_selector": null,
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 6,
@@ -85,7 +105,11 @@
     "last_checked": null,
     "crawl_mode": "auto",
     "crawl_paused": false,
-    "selectors": null
+    "selectors": null,
+    "content_selector": null,
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 7,
@@ -98,7 +122,11 @@
     "last_checked": null,
     "crawl_mode": "auto",
     "crawl_paused": false,
-    "selectors": null
+    "selectors": null,
+    "content_selector": null,
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 8,
@@ -112,7 +140,10 @@
     "crawl_mode": "stealth",
     "crawl_paused": false,
     "selectors": null,
-    "content_selector": "main#main .post-body"
+    "content_selector": "main#main .post-body",
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 9,
@@ -133,7 +164,10 @@
       "min_title_len": 12,
       "max_title_len": 140
     },
-    "content_selector": "article"
+    "content_selector": "article",
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 10,
@@ -146,7 +180,11 @@
     "last_checked": null,
     "crawl_mode": "auto",
     "crawl_paused": false,
-    "selectors": null
+    "selectors": null,
+    "content_selector": null,
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 11,
@@ -166,7 +204,11 @@
       "time_url_pattern": "/(?P<year>\\d{4})/(?P<month>\\d{2})/(?P<day>\\d{2})/",
       "min_title_len": 12,
       "max_title_len": 140
-    }
+    },
+    "content_selector": null,
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 12,
@@ -185,7 +227,10 @@
       "min_title_len": 12,
       "max_title_len": 160
     },
-    "content_selector": "main#tm-main .uk-width-3-4@m"
+    "content_selector": "main#tm-main .uk-width-3-4@m",
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 13,
@@ -199,7 +244,10 @@
     "crawl_mode": "stealth",
     "crawl_paused": false,
     "selectors": null,
-    "content_selector": ".td-post-content"
+    "content_selector": ".td-post-content",
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 14,
@@ -220,7 +268,10 @@
       "min_title_len": 12,
       "max_title_len": 140
     },
-    "content_selector": "article.c-articleBody"
+    "content_selector": "article.c-articleBody",
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 15,
@@ -233,32 +284,39 @@
     "last_checked": null,
     "crawl_mode": "auto",
     "crawl_paused": false,
-    "selectors": null
+    "selectors": null,
+    "content_selector": null,
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 16,
     "id": "e2c77990-26cc-4ec5-9ef4-d874f97005e6",
     "name": "Lockheed Martin NEWS",
     "url": "https://www.lockheedmartin.com/en-us/news.html",
-    "note": "JavaScript news hub; extracts internal dated news pages and uses the article body for feature detail pages. Press releases may remain on the legacy newsroom domain.",
+    "note": "JavaScript news hub; extracts internal dated news pages and uses the article body for feature detail pages. Press releases may remain on the legacy newsroom domain. 需实际测试。",
     "rss_url": null,
     "status": "no_rss",
     "last_checked": null,
     "crawl_mode": "js",
     "crawl_paused": false,
-    "content_selector": [
-      "main .article-body",
-      "main .article-content",
-      "article",
-      "main"
-    ],
     "selectors": {
       "css_selector": "a[href]",
       "url_pattern": "(?:(?:https?://www\\.lockheedmartin\\.com)?/en-us/news/[^?#]*\\d{4}[^?#]*\\.html|https?://news\\.lockheedmartin\\.com/\\d{4}-\\d{2}-\\d{2}-[^?#]+)(?:[?#].*)?$",
       "time_source": null,
       "min_title_len": 12,
       "max_title_len": 180
-    }
+    },
+    "content_selector": [
+      "main .article-body",
+      "main .article-content",
+      "article",
+      "main"
+    ],
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 17,
@@ -279,7 +337,10 @@
       "time_url_pattern": "/(?P<year>\\d{4})/(?P<month>\\d{2})/",
       "min_title_len": 12,
       "max_title_len": 160
-    }
+    },
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 18,
@@ -300,7 +361,10 @@
       "min_title_len": 12,
       "max_title_len": 160
     },
-    "content_selector": ".article-body"
+    "content_selector": ".article-body",
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 19,
@@ -314,7 +378,10 @@
     "crawl_mode": "html",
     "crawl_paused": false,
     "selectors": null,
-    "content_selector": ".elementor-widget-theme-post-content"
+    "content_selector": ".elementor-widget-theme-post-content",
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 20,
@@ -327,7 +394,11 @@
     "last_checked": null,
     "crawl_mode": "auto",
     "crawl_paused": false,
-    "selectors": null
+    "selectors": null,
+    "content_selector": null,
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 21,
@@ -340,8 +411,11 @@
     "last_checked": null,
     "crawl_mode": "html",
     "crawl_paused": false,
+    "selectors": null,
     "content_selector": ".et_pb_post_content",
-    "selectors": null
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 22,
@@ -354,7 +428,11 @@
     "last_checked": null,
     "crawl_mode": "auto",
     "crawl_paused": false,
-    "selectors": null
+    "selectors": null,
+    "content_selector": null,
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 23,
@@ -367,7 +445,11 @@
     "last_checked": null,
     "crawl_mode": "auto",
     "crawl_paused": false,
-    "selectors": null
+    "selectors": null,
+    "content_selector": null,
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 24,
@@ -380,7 +462,11 @@
     "last_checked": null,
     "crawl_mode": "auto",
     "crawl_paused": false,
-    "selectors": null
+    "selectors": null,
+    "content_selector": null,
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   },
   {
     "seq": 25,
@@ -400,6 +486,27 @@
       "time_url_pattern": "/(?P<year>\\d{4})/(?P<month>\\d{2})/",
       "min_title_len": 12,
       "max_title_len": 160
-    }
+    },
+    "content_selector": null,
+    "article_crawl_mode": "auto",
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
+  },
+  {
+    "seq": 26,
+    "id": "a09a2c73-e672-4593-9dfe-fe6b54f045f6",
+    "name": "readmil",
+    "url": "https://www.readmil.com/",
+    "note": "",
+    "rss_url": "https://www.readmil.com/rss.xml",
+    "status": "rss",
+    "last_checked": "2026-09-14T20:11:11",
+    "crawl_mode": "auto",
+    "article_crawl_mode": "auto",
+    "crawl_paused": false,
+    "selectors": null,
+    "content_selector": null,
+    "content_selector_generated_by": null,
+    "content_selector_generated_at": null
   }
 ]

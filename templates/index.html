@@ -46,7 +46,7 @@
   .url-cell a { color: #2563eb; text-decoration: none; }
   .url-cell a:hover { text-decoration: underline; }
   .mode-stack { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
-  .actions { display: grid; grid-template-columns: repeat(4, minmax(90px, 1fr)); gap: 8px; white-space: nowrap; }
+  .actions { display: grid; grid-template-columns: repeat(5, minmax(90px, 1fr)); gap: 8px; white-space: nowrap; }
   .actions-stack { display: flex; flex-direction: column; gap: 8px; min-width: 420px; }
   .actions .btn { width: 100%; }
   .actions-primary .btn { border-color: #d4d4d4; }
@@ -73,7 +73,7 @@
   .status-fill { height: 100%; background: #1a1a1a; transition: width .3s; }
   .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none; align-items: center; justify-content: center; z-index: 100; }
   .overlay.open { display: flex; }
-  .modal { background: #fff; border-radius: 10px; padding: 24px; width: 420px; max-width: 95vw; }
+  .modal { background: #fff; border-radius: 10px; padding: 24px; width: 460px; max-width: 95vw; }
   .modal h2 { font-size: 15px; font-weight: 600; margin-bottom: 18px; }
   .field { margin-bottom: 14px; }
   .field label { display: block; font-size: 12px; font-weight: 500; color: #555; margin-bottom: 5px; }
@@ -236,9 +236,23 @@
         <option value="stealth">stealth - 隐蔽抓取</option>
       </select>
     </div>
+    <div class="field">
+      <label>详情页抓取模式</label>
+      <select id="fArticleCrawlMode">
+        <option value="auto">auto - 沿用现有逻辑（默认）</option>
+        <option value="html">html - 静态抓取</option>
+        <option value="js">js - 动态渲染</option>
+        <option value="stealth">stealth - 隐蔽抓取</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>正文容器选择器</label>
+      <textarea id="fContentSelector" placeholder="例如：article 或 div.article-body；多个选择器请每行一个"></textarea>
+    </div>
     <div class="field"><label>备注</label><textarea id="fNote" placeholder="可选"></textarea></div>
     <div class="selectors-preview" id="selectorsPreview"></div>
     <div class="modal-footer">
+      <button class="btn btn-secondary btn-sm" id="btnRulePreview" onclick="previewRules()" style="display:none">规则预览</button>
       <button class="btn btn-ai btn-sm" id="btnAnalyze" onclick="analyzeSite()" style="margin-right:auto;display:none">AI分析</button>
       <button class="btn btn-secondary" onclick="closeModal()">取消</button>
       <button class="btn btn-primary" id="btnSave" onclick="saveSite()">保存</button>
@@ -326,12 +340,21 @@ function closeHistoryDrawer() {
   document.getElementById('historyBackdrop').classList.remove('open');
 }
 
+function getContentSelectorValue() {
+  const raw = document.getElementById('fContentSelector').value.trim();
+  if (!raw) return '';
+  const lines = raw.split(/\r?\n/).map(item => item.trim()).filter(Boolean);
+  return lines.length > 1 ? lines : lines[0];
+}
+
 function serializeModalForm() {
   return JSON.stringify({
     name: document.getElementById('fName').value.trim(),
     url: document.getElementById('fUrl').value.trim(),
     note: document.getElementById('fNote').value.trim(),
     crawl_mode: document.getElementById('fCrawlMode').value,
+    article_crawl_mode: document.getElementById('fArticleCrawlMode').value,
+    content_selector: getContentSelectorValue(),
   });
 }
 
@@ -460,8 +483,8 @@ function renderTable(sites) {
           <div class="actions actions-primary">
             <button class="btn btn-secondary btn-sm" data-action="check" onclick="checkOne('${s.id}')">检测</button>
             <button class="btn btn-secondary btn-sm" data-action="crawl" onclick="crawlOne('${s.id}')" ${paused ? 'disabled' : ''}>抓取</button>
+            <button class="btn btn-secondary btn-sm" data-action="output-test" onclick="testSiteOutput('${s.id}')">输出测试</button>
             <button class="${pauseBtnClass}" data-action="pause" onclick="toggleSiteCrawl('${s.id}', ${paused})">${pauseBtnLabel}</button>
-            <button class="btn btn-ai btn-sm" data-action="analyze" onclick="analyzeSiteById('${s.id}')">AI分析</button>
           </div>
           <div class="actions actions-secondary">
             <button class="btn btn-secondary btn-sm" onclick="showHistory('${s.id}', '${esc(s.name)}')">历史</button>
@@ -506,6 +529,36 @@ async function crawlOne(id) {
     btn.disabled = false;
     btn.textContent = '抓取';
     loadSitesWithCrawlInfo();
+  }
+}
+
+async function testSiteOutput(id) {
+  const row = document.getElementById('row-' + id);
+  const btn = row ? row.querySelector('[data-action="output-test"]') : null;
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  btn.textContent = '测试中';
+  updateStatusBar('输出测试中', null, '正在抓取并生成桌面报告');
+  try {
+    const res = await fetch('/api/sites/' + id + '/output-test', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) {
+      alert((data.error || '输出测试失败') + (data.report_path ? '\n报告：' + data.report_path : ''));
+      updateStatusBar('输出测试失败', null, data.error || '');
+      return;
+    }
+    alert(
+      '测试完成，已输出到桌面：\n' + data.report_path +
+      '\n\n文章数：' + data.count +
+      '\n有正文：' + data.content_count
+    );
+    updateStatusBar('输出测试完成', null, data.report_path);
+  } catch (e) {
+    alert('输出测试失败：' + e.message);
+    updateStatusBar('输出测试失败', null, e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '输出测试';
   }
 }
 
@@ -635,11 +688,13 @@ function openModal(id) {
   editingId = id || null;
   document.getElementById('modalTitle').textContent = id ? '编辑网站' : '添加网站';
   const btnAnalyze = document.getElementById('btnAnalyze');
+  const btnRulePreview = document.getElementById('btnRulePreview');
   const preview = document.getElementById('selectorsPreview');
   preview.classList.remove('active');
   preview.textContent = '';
   if (id) {
     btnAnalyze.style.display = '';
+    btnRulePreview.style.display = '';
     fetch('/api/sites').then(r => r.json()).then(sites => {
       const s = sites.find(x => x.id === id);
       if (!s) return;
@@ -647,6 +702,10 @@ function openModal(id) {
       document.getElementById('fUrl').value = s.url;
       document.getElementById('fNote').value = s.note || '';
       document.getElementById('fCrawlMode').value = s.crawl_mode || 'auto';
+      document.getElementById('fArticleCrawlMode').value = s.article_crawl_mode || 'auto';
+      document.getElementById('fContentSelector').value = Array.isArray(s.content_selector)
+        ? s.content_selector.join('\n')
+        : (s.content_selector || '');
       if (s.selectors && s.selectors.css_selector) {
         preview.textContent = JSON.stringify(s.selectors, null, 2);
         preview.classList.add('active');
@@ -655,10 +714,13 @@ function openModal(id) {
     });
   } else {
     btnAnalyze.style.display = 'none';
+    btnRulePreview.style.display = 'none';
     document.getElementById('fName').value = '';
     document.getElementById('fUrl').value = '';
     document.getElementById('fNote').value = '';
     document.getElementById('fCrawlMode').value = 'auto';
+    document.getElementById('fArticleCrawlMode').value = 'auto';
+    document.getElementById('fContentSelector').value = '';
     captureModalState();
   }
   document.getElementById('overlay').classList.add('open');
@@ -683,10 +745,14 @@ async function saveSite() {
   const url = document.getElementById('fUrl').value.trim();
   const note = document.getElementById('fNote').value.trim();
   const crawl_mode = document.getElementById('fCrawlMode').value;
+  const article_crawl_mode = document.getElementById('fArticleCrawlMode').value;
+  const content_selector = getContentSelectorValue();
   if (!name || !url) { alert('名称和 URL 不能为空'); return; }
   const btn = document.getElementById('btnSave');
   btn.disabled = true;
-  const body = JSON.stringify({ name, url, note, crawl_mode });
+  const body = JSON.stringify({
+    name, url, note, crawl_mode, article_crawl_mode, content_selector,
+  });
   if (editingId) {
     await fetch('/api/sites/' + editingId, { method: 'PUT', headers: {'Content-Type':'application/json'}, body });
   } else {
@@ -695,6 +761,49 @@ async function saveSite() {
   btn.disabled = false;
   closeModal(true);
   loadSitesWithCrawlInfo();
+}
+
+async function previewRules() {
+  if (!editingId) return;
+  const btn = document.getElementById('btnRulePreview');
+  const preview = document.getElementById('selectorsPreview');
+  btn.disabled = true;
+  btn.textContent = '测试中';
+  try {
+    const res = await fetch('/api/sites/' + editingId + '/rule-preview', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        content_selector: getContentSelectorValue(),
+        article_crawl_mode: document.getElementById('fArticleCrawlMode').value,
+        limit: 3,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || '规则预览失败');
+      return;
+    }
+    const lines = [
+      '列表模式: ' + data.listing_method,
+      '详情模式: ' + data.article_crawl_mode,
+      '正文选择器: ' + (data.content_selector || '未设置'),
+      '文章数: ' + data.count,
+      '',
+    ];
+    (data.items || []).forEach(item => {
+      lines.push(
+        (item.content_selector_hit ? '[选择器命中] ' : '[选择器未命中] ') +
+        (item.content_hit ? '' : '[无正文] ') +
+        item.content_length + ' 字 - ' + item.title
+      );
+    });
+    preview.textContent = lines.join('\n');
+    preview.classList.add('active');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '规则预览';
+  }
 }
 
 document.getElementById('btnServiceToggle').addEventListener('click', async () => {
@@ -876,13 +985,6 @@ async function analyzeSite() {
   await _doAnalyze(editingId);
 }
 
-async function analyzeSiteById(id) {
-  const row = document.getElementById('row-' + id);
-  const btn = row ? row.querySelector('[data-action="analyze"]') : null;
-  if (btn) { btn.disabled = true; btn.textContent = '分析中'; }
-  await _doAnalyze(id);
-}
-
 async function _doAnalyze(siteId) {
   const btnModal = document.getElementById('btnAnalyze');
   _analyzeFromModal = document.getElementById('overlay').classList.contains('open');
@@ -909,11 +1011,6 @@ async function _doAnalyze(siteId) {
 function _restoreAnalyzeButtons() {
   const btnModal = document.getElementById('btnAnalyze');
   if (btnModal) { btnModal.disabled = false; btnModal.textContent = 'AI分析'; }
-  if (_analyzeSourceId) {
-    const row = document.getElementById('row-' + _analyzeSourceId);
-    const btn = row ? row.querySelector('[data-action="analyze"]') : null;
-    if (btn) { btn.disabled = false; btn.textContent = 'AI分析'; }
-  }
   _analyzeSourceId = null;
   _analyzeFromModal = false;
 }
