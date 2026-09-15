@@ -90,6 +90,55 @@ def test_output_site_test_writes_report_without_saving_crawl_result(monkeypatch,
     assert "正文内容" in report
 
 
+def test_output_site_test_uses_translation_channel(monkeypatch, tmp_path):
+    site = {
+        "id": "site-1",
+        "name": "Example",
+        "url": "https://example.com",
+    }
+    report_path = tmp_path / "Example.txt"
+    translated = []
+
+    monkeypatch.setattr(app_module, "load_sites", lambda: [site])
+    monkeypatch.setattr(app_module, "_test_report_path", lambda name: report_path)
+    monkeypatch.setattr(
+        app_module,
+        "_crawl_site",
+        lambda tested_site: {
+            "count": 1,
+            "items": [{
+                "title": "English title",
+                "content": "English content",
+            }],
+        },
+    )
+    monkeypatch.setattr(
+        app_module,
+        "load_config",
+        lambda: {"translation": {"enabled": True}},
+    )
+
+    def fake_translate(result, cfg):
+        translated.append((result, cfg))
+        result["items"][0]["title_zh"] = "中文标题"
+        result["items"][0]["content_zh"] = "中文正文"
+        result["items"][0]["translation"] = {"status": "success"}
+        return result
+
+    monkeypatch.setattr(app_module, "_translate_result", fake_translate)
+    app_module.app.config["TESTING"] = True
+
+    with app_module.app.test_client() as client:
+        response = client.post("/api/sites/site-1/output-test")
+
+    assert response.status_code == 200
+    assert len(translated) == 1
+    assert translated[0][1]["translation"]["enabled"] is True
+    report = report_path.read_text(encoding="utf-8")
+    assert "中文标题" in report
+    assert "中文正文" in report
+
+
 def test_system_status_reports_scheduler_and_crawl_state(monkeypatch):
     cfg = {"crawl_interval_hours": 3, "scheduler_on": False}
     original_state = dict(app_module.crawl_state)

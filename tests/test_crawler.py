@@ -2,6 +2,8 @@ import re
 from unittest.mock import MagicMock, patch
 from urllib.parse import urljoin
 
+import requests
+
 DATE_PATTERN = re.compile(r'\d{4}[-/_]\d{2}')
 
 
@@ -173,6 +175,45 @@ def test_crawl_stealth_returns_empty_on_exception():
         MockSF.fetch.side_effect = Exception('blocked')
         items = crawl_stealth(site)
     assert items == []
+
+
+def test_crawl_rss_uses_timeout_and_returns_empty_on_network_error():
+    from crawler import crawl_rss
+
+    site = {'rss_url': 'https://rss.example.com/feed'}
+
+    with patch('crawler.requests.get', side_effect=requests.RequestException('timed out')) as mock_get:
+        items = crawl_rss(site)
+
+    mock_get.assert_called_once_with(
+        'https://rss.example.com/feed',
+        timeout=(5, 15),
+        headers={'User-Agent': 'OpenMonitor/1.0'},
+    )
+    assert items == []
+
+
+def test_crawl_rss_respects_max_items():
+    from crawler import crawl_rss
+
+    entries = [
+        {
+            'link': f'https://rss.example.com/article-{index}',
+            'title': f'Article {index}',
+        }
+        for index in range(5)
+    ]
+    response = MagicMock()
+    response.content = b'<rss />'
+    response.raise_for_status.return_value = None
+    parsed_feed = MagicMock()
+    parsed_feed.entries = entries
+
+    with patch('crawler.requests.get', return_value=response), \
+         patch('crawler.feedparser.parse', return_value=parsed_feed):
+        items = crawl_rss({'rss_url': 'https://rss.example.com/feed', 'max_items': 2})
+
+    assert [item['title'] for item in items] == ['Article 0', 'Article 1']
 
 
 def test_crawl_site_auto_rss():

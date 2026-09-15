@@ -596,7 +596,9 @@ function startCrawlPolling() {
       btn.textContent = '全部抓取';
       await loadSitesWithCrawlInfo();
       await loadSystemStatus();
-      if (s.stopped) {
+      if (s.error) {
+        updateStatusBar('抓取异常', null, s.error);
+      } else if (s.stopped) {
         updateStatusBar('抓取已停止', null, '服务器已停止继续抓取剩余网站');
       }
     }

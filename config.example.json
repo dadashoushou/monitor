@@ -4,6 +4,7 @@
   "mirror_data_dir": "",
   "max_items": 200,
   "max_article_age_days": 0,
+  "site_timeout_seconds": 300,
   "ai": {
     "api_url": "https://api.openai.com/v1",
     "api_key": "<your-api-key>",

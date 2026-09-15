@@ -83,12 +83,14 @@ def load_config() -> dict:
             'crawl_interval_hours': 1,
             'scheduler_on': True,
             'bookmark_html_path': DEFAULT_BOOKMARK_HTML,
+            'site_timeout_seconds': 300,
         }
     with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
         cfg = json.load(f)
     cfg.setdefault('crawl_interval_hours', 1)
     cfg.setdefault('scheduler_on', True)
     cfg.setdefault('bookmark_html_path', DEFAULT_BOOKMARK_HTML)
+    cfg.setdefault('site_timeout_seconds', 300)
     return cfg
 
 
@@ -443,6 +445,20 @@ def _save_batch_snapshot_to_mirror(snapshot: dict, filename: str):
 
 
 def run_crawl_all():
+    try:
+        _run_crawl_all()
+    except Exception as exc:
+        with crawl_lock:
+            crawl_state['error'] = str(exc)
+    finally:
+        with crawl_lock:
+            crawl_state['running'] = False
+            crawl_state['current'] = ''
+            crawl_state['stopped'] = crawl_stop_event.is_set()
+            crawl_state['last_run'] = datetime.now().isoformat(timespec='seconds')
+
+
+def _run_crawl_all():
     global crawl_state
     sites = load_sites()
     cfg = load_config()
@@ -463,6 +479,7 @@ def run_crawl_all():
             'current': '',
             'last_run': previous_last_run,
             'stopped': False,
+            'error': None,
         }
     if not sites:
         with crawl_lock:
@@ -474,6 +491,9 @@ def run_crawl_all():
             crawl_state['done'] += 1
             crawl_state['current'] = site.get('name', '')
 
+    site_timeout = cfg.get('site_timeout_seconds', 300)
+    for site in sites:
+        site['_site_timeout_seconds'] = site_timeout
     _crawl_all(
         sites,
         get_data_dir(),
@@ -483,11 +503,6 @@ def run_crawl_all():
         should_stop=crawl_stop_event.is_set,
         progress_cb=_progress,
     )
-    with crawl_lock:
-        crawl_state['running'] = False
-        crawl_state['current'] = ''
-        crawl_state['stopped'] = crawl_stop_event.is_set()
-        crawl_state['last_run'] = datetime.now().isoformat(timespec='seconds')
 
 
 scheduler = BackgroundScheduler()
@@ -614,6 +629,11 @@ def _write_site_test_report(site: dict, result: dict | None, error: str = '') ->
                 f"正文长度：{len(content)}",
                 "正文：",
                 content[:3000] if content else "(未提取到正文)",
+                "中文标题：",
+                item.get('title_zh') or "(未生成译文)",
+                "中文正文：",
+                (item.get('content_zh') or "(未生成译文)")[:3000],
+                f"翻译状态：{(item.get('translation') or {}).get('status', '未启用')}",
                 "",
             ])
 
@@ -962,6 +982,7 @@ def crawl_all_route():
             return jsonify({'error': '抓取正在进行中'}), 409
         crawl_state['running'] = True
         crawl_state['stopped'] = False
+        crawl_state['error'] = None
     t = threading.Thread(target=run_crawl_all, daemon=True)
     t.start()
     return jsonify({'ok': True})
@@ -993,7 +1014,10 @@ def crawl_one_route(site_id):
     site.setdefault('max_items', cfg.get('max_items', 200))
     site.setdefault('max_article_age_days', cfg.get('max_article_age_days', 0))
     site['_skip_urls'] = list(_known_urls_for_site(site['id']))
-    result = _crawl_site(site)
+    try:
+        result = _crawl_site(site)
+    except Exception as exc:
+        return jsonify({'error': f'抓取失败：{exc}'}), 502
     if result and result.get('items'):
         result['items'] = _dedupe_items_with_mirror(site['id'], result['items'])
         result['count'] = len(result['items'])
@@ -1017,6 +1041,7 @@ def output_site_test(site_id):
     }
     try:
         result = _crawl_site(test_site)
+        result = _translate_result(result, load_config())
         report_path = _write_site_test_report(test_site, result)
     except Exception as exc:
         report_path = _write_site_test_report(test_site, None, str(exc))

@@ -3,17 +3,21 @@
 """
 import re
 import json
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from urllib.parse import urldefrag, urljoin, urlparse, urlunparse
 
 import feedparser
+import requests
 from bs4 import BeautifulSoup
 from scrapling import Fetcher, DynamicFetcher, StealthyFetcher
 
 DATE_PATTERN = re.compile(r'\d{4}[-/_]\d{2}')
 ARTICLE_PATTERN = re.compile(r'/article/')
+RSS_TIMEOUT = (5, 15)
+SITE_TIMEOUT_SECONDS = 300
 CONTENT_SELECTORS = (
     'article',
     '[role="main"]',
@@ -264,6 +268,11 @@ def _resolve_article_crawl_mode(site: dict, listing_method: str | None = None) -
     return 'html'
 
 
+def _site_deadline_expired(site: dict) -> bool:
+    deadline = site.get('_crawl_deadline')
+    return deadline is not None and time.monotonic() >= deadline
+
+
 def _attach_article_content(items: list[dict], site: dict) -> list[dict]:
     if not items:
         return items
@@ -275,6 +284,9 @@ def _attach_article_content(items: list[dict], site: dict) -> list[dict]:
 
     max_article_body_len = site.get('max_article_body_len', 0)
     for item in items:
+        if _site_deadline_expired(site):
+            site['_crawl_timed_out'] = True
+            break
         if item.get('content'):
             continue
         content, _ = _crawl_article_content(
@@ -441,11 +453,30 @@ def _parsed_time_to_iso(t) -> str:
 
 
 def crawl_rss(site: dict) -> list[dict]:
-    """用 feedparser 抓取 site['rss_url']，返回条目列表"""
-    feed = feedparser.parse(site['rss_url'])
+    """用带超时的 HTTP 请求获取 RSS，再交给 feedparser 解析。"""
+    rss_url = site.get('rss_url')
+    if not rss_url:
+        return []
+    try:
+        response = requests.get(
+            rss_url,
+            timeout=RSS_TIMEOUT,
+            headers={'User-Agent': 'OpenMonitor/1.0'},
+        )
+        response.raise_for_status()
+        feed = feedparser.parse(response.content)
+    except (requests.RequestException, ValueError, TypeError):
+        return []
+
     items = []
     seen_urls: set[str] = set()
-    for entry in feed.entries:
+    max_items = site.get('max_items', 200)
+    try:
+        max_items = max(int(max_items), 1)
+    except (TypeError, ValueError):
+        max_items = 200
+
+    for entry in feed.entries[:max_items]:
         url = entry.get('link', '')
         if url in seen_urls:
             continue
@@ -506,6 +537,16 @@ def crawl_site(site: dict) -> dict | None:
     if site.get('crawl_paused'):
         return None
 
+    if '_crawl_deadline' not in site:
+        try:
+            timeout_seconds = float(site.get(
+                '_site_timeout_seconds',
+                SITE_TIMEOUT_SECONDS,
+            ))
+        except (TypeError, ValueError):
+            timeout_seconds = SITE_TIMEOUT_SECONDS
+        site['_crawl_deadline'] = time.monotonic() + max(timeout_seconds, 1)
+
     mode = site.get('crawl_mode', 'auto')
 
     if site.get('status') == 'rss':
@@ -553,10 +594,16 @@ def crawl_site(site: dict) -> dict | None:
         article_mode = site.get('crawl_mode', 'auto')
         if article_mode == 'auto':
             article_mode = 'html' if method == 'rss' else method
+        content_site = {
+            **site,
+            'crawl_mode': article_mode,
+            '_listing_method': method,
+        }
         items = _attach_article_content(
             items,
-            {**site, 'crawl_mode': article_mode, '_listing_method': method},
+            content_site,
         )
+        site['_crawl_timed_out'] = content_site.get('_crawl_timed_out', False)
 
     if not items:
         return None
@@ -568,6 +615,7 @@ def crawl_site(site: dict) -> dict | None:
         'method': method,
         'count': len(items),
         'items': items,
+        'timed_out': bool(site.get('_crawl_timed_out')),
     }
 
 
