@@ -33,7 +33,9 @@ app = Flask(__name__)
 DATA_FILE = Path(__file__).parent / 'sites.json'
 CONFIG_FILE = Path(__file__).parent / 'config.json'
 CRAWL_LOG_FILE = Path(__file__).parent / 'crawl_logs.jsonl'
+SCHEDULER_LOCK_FILE = Path(__file__).parent / '.scheduler.lock'
 DEFAULT_BOOKMARK_HTML = r'D:\科情\科情\科情.html'
+_scheduler_lock_handle = None
 
 # 抓取状态
 crawl_state = {
@@ -307,6 +309,12 @@ def _site_result_log(site: dict, result: dict | None, error: str = '') -> dict:
     items = (result or {}).get('items') or []
     article_count = int((result or {}).get('count') or len(items) or 0)
     raw_article_count = int((result or {}).get('raw_article_count') or article_count)
+    eligible_article_count = int(
+        (result or {}).get('eligible_article_count')
+        if (result or {}).get('eligible_article_count') is not None
+        else raw_article_count
+    )
+    age_filtered_count = int((result or {}).get('age_filtered_count') or 0)
     history_filtered_count = int((result or {}).get('history_filtered_count') or 0)
     new_article_count = int((result or {}).get('new_article_count') or article_count)
     content_count = sum(1 for item in items if item.get('content'))
@@ -329,6 +337,14 @@ def _site_result_log(site: dict, result: dict | None, error: str = '') -> dict:
     ]
     timed_out = bool((result or {}).get('timed_out'))
     result_error = error or (result or {}).get('error') or ''
+    error_stage = (result or {}).get('error_stage') or ''
+    http_status = (result or {}).get('http_status')
+    error_url = (result or {}).get('error_url') or ''
+    article_errors = (result or {}).get('article_errors') or []
+    article_error_detail = ''
+    if article_errors:
+        first_article_error = article_errors[0]
+        article_error_detail = first_article_error.get('error') or ''
     mode = site.get('crawl_mode', 'auto')
 
     status = 'success'
@@ -342,6 +358,12 @@ def _site_result_log(site: dict, result: dict | None, error: str = '') -> dict:
     elif (result or {}).get('no_new_items'):
         status = 'skipped'
         reason = '本次抓到的文章均已存在历史记录'
+    elif (result or {}).get('no_recent_items'):
+        status = 'skipped'
+        reason = '站点访问正常，但没有符合时效范围的文章'
+    elif (result or {}).get('empty_source'):
+        status = 'skipped'
+        reason = '站点访问正常，但列表或 RSS 当前没有文章'
     elif article_count <= 0:
         status = 'failed'
         if site.get('status') == 'timeout':
@@ -353,9 +375,13 @@ def _site_result_log(site: dict, result: dict | None, error: str = '') -> dict:
     elif content_count <= 0 and title_only_count > 0:
         status = 'failed'
         reason = '只抓取到标题，未抓到原文'
+        if article_error_detail:
+            reason += f'：{article_error_detail}'
     elif content_count < article_count:
         status = 'partial'
         reason = '部分文章未抓到原文'
+        if article_error_detail:
+            reason += f'：{article_error_detail}'
     elif translation_failed_count:
         status = 'partial'
         reason = '文章已抓取，翻译失败'
@@ -372,6 +398,8 @@ def _site_result_log(site: dict, result: dict | None, error: str = '') -> dict:
         'method': (result or {}).get('method', mode),
         'article_count': article_count,
         'raw_article_count': raw_article_count,
+        'eligible_article_count': eligible_article_count,
+        'age_filtered_count': age_filtered_count,
         'history_filtered_count': history_filtered_count,
         'new_article_count': new_article_count,
         'content_count': content_count,
@@ -381,6 +409,10 @@ def _site_result_log(site: dict, result: dict | None, error: str = '') -> dict:
         'translation_error': translation_errors[0] if translation_errors else '',
         'timed_out': timed_out,
         'error': result_error,
+        'error_stage': error_stage,
+        'http_status': http_status,
+        'error_url': error_url,
+        'article_errors': article_errors,
     }
 
 
@@ -395,6 +427,7 @@ def _crawl_run_log(source: str, started_at: str, site_logs: list[dict], error: s
         'total_articles': total_articles,
         'content_count': content_count,
         'raw_articles': sum(item.get('raw_article_count', 0) for item in site_logs),
+        'age_filtered_count': sum(item.get('age_filtered_count', 0) for item in site_logs),
         'history_filtered_count': sum(item.get('history_filtered_count', 0) for item in site_logs),
         'new_article_count': sum(item.get('new_article_count', 0) for item in site_logs),
         'success_count': sum(1 for item in site_logs if item.get('status') == 'success'),
@@ -657,7 +690,39 @@ def _run_crawl_all():
 scheduler = BackgroundScheduler()
 
 
+def _acquire_scheduler_lock() -> bool:
+    """确保同一工作目录内只有一个进程启动定时抓取器。"""
+    global _scheduler_lock_handle
+    if _scheduler_lock_handle is not None:
+        return True
+
+    handle = open(SCHEDULER_LOCK_FILE, 'a+b')
+    try:
+        handle.seek(0)
+        if handle.tell() == 0 and handle.read(1) == b'':
+            handle.write(b'0')
+            handle.flush()
+        handle.seek(0)
+        if os.name == 'nt':
+            import msvcrt
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, IOError):
+        handle.close()
+        return False
+
+    _scheduler_lock_handle = handle
+    return True
+
+
 def _start_scheduler():
+    if not _acquire_scheduler_lock():
+        app.logger.warning(
+            '另一个 OpenMonitor 进程已持有定时抓取锁，本进程不启动重复调度器。'
+        )
+        return False
     cfg = load_config()
     hours = get_crawl_interval_hours(cfg)
     if not scheduler.get_job('crawl_job'):
@@ -671,6 +736,7 @@ def _start_scheduler():
         scheduler.resume()
     else:
         scheduler.pause()
+    return True
 
 
 # 全局检测状态

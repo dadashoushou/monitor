@@ -44,6 +44,60 @@ CONTENT_SELECTORS = (
 _PUBLISHED_FORMATS = ('%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d')
 
 
+def _clear_crawl_diagnostics(site: dict) -> None:
+    for key in (
+        '_crawl_error',
+        '_crawl_error_stage',
+        '_crawl_http_status',
+        '_crawl_error_url',
+        '_crawl_empty_source',
+        '_article_errors',
+    ):
+        site.pop(key, None)
+
+
+def _record_crawl_error(
+    site: dict,
+    stage: str,
+    message: str,
+    *,
+    url: str = '',
+    status: int | None = None,
+) -> None:
+    site['_crawl_error'] = _clean_text(message)
+    site['_crawl_error_stage'] = stage
+    if url:
+        site['_crawl_error_url'] = url
+    if status is not None:
+        site['_crawl_http_status'] = int(status)
+
+
+def _page_status(page) -> int | None:
+    status = getattr(page, 'status', None)
+    try:
+        return int(status) if status is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _record_article_error(
+    diagnostics: dict | None,
+    url: str,
+    message: str,
+    *,
+    status: int | None = None,
+) -> None:
+    if diagnostics is None:
+        return
+    errors = diagnostics.setdefault('_article_errors', [])
+    if len(errors) >= 5:
+        return
+    entry = {'url': url, 'error': _clean_text(message)}
+    if status is not None:
+        entry['http_status'] = int(status)
+    errors.append(entry)
+
+
 def _parse_published(pub: str) -> datetime | None:
     for fmt in _PUBLISHED_FORMATS:
         try:
@@ -64,6 +118,10 @@ def _filter_by_age(items: list[dict], max_age_days: int) -> list[dict]:
             result.append(item)
             continue
         dt = _parse_published(pub)
+        # URL 只能提供日期时，不应把它误当成当天 00:00；按当天结束计算，
+        # 避免文章刚跨过午夜就提前退出时效窗口。
+        if dt is not None and re.fullmatch(r'\d{4}-\d{2}-\d{2}', pub):
+            dt += timedelta(days=1) - timedelta(microseconds=1)
         if dt is None or dt >= cutoff:
             result.append(item)
     return result
@@ -85,6 +143,20 @@ def _extract_time_from_url(href: str, pattern: re.Pattern) -> str:
 
 def _clean_text(text: str) -> str:
     return re.sub(r'\s+', ' ', (text or '').strip())
+
+
+def _element_text(element) -> str:
+    """兼容 Scrapling 对部分嵌套节点 `.text` 为空的页面。"""
+    text = _clean_text(getattr(element, 'text', '') or '')
+    if text:
+        return text
+    get_all_text = getattr(element, 'get_all_text', None)
+    if callable(get_all_text):
+        try:
+            return _clean_text(get_all_text() or '')
+        except Exception:
+            return ''
+    return ''
 
 
 def _normalize_url(url: str) -> str:
@@ -196,6 +268,7 @@ def _crawl_article_content(
     url: str,
     fetcher='html',
     content_selector: str | list[str] | None = None,
+    diagnostics: dict | None = None,
 ) -> tuple[str, str]:
     if not (url or '').startswith(('http://', 'https://')):
         return '', ''
@@ -212,12 +285,29 @@ def _crawl_article_content(
             )
         else:
             page = Fetcher.get(url, timeout=15)
-    except Exception:
+    except Exception as exc:
+        _record_article_error(
+            diagnostics,
+            url,
+            f'{type(exc).__name__}: {exc}',
+        )
         return '', ''
+
+    status = _page_status(page)
+    if status is not None and status >= 400:
+        _record_article_error(
+            diagnostics,
+            url,
+            f'详情页返回 HTTP {status}',
+            status=status,
+        )
+        return '', getattr(page, 'body', '') if hasattr(page, 'body') else ''
 
     content = _extract_page_content(page, content_selector)
     if not content:
         content = _clean_text(page.text or '') if getattr(page, 'text', None) else ''
+    if not content:
+        _record_article_error(diagnostics, url, '详情页未匹配到正文')
     return content, getattr(page, 'body', '') if hasattr(page, 'body') else ''
 
 
@@ -293,6 +383,7 @@ def _attach_article_content(items: list[dict], site: dict) -> list[dict]:
             item.get('url', ''),
             article_fetcher,
             site.get('content_selector'),
+            diagnostics=site,
         )
         if max_article_body_len and len(content) > max_article_body_len:
             content = content[:max_article_body_len]
@@ -368,7 +459,7 @@ def _extract_articles(page, site_url: str, selectors: dict = None,
     items = []
     seen_urls: set[str] = set()
     for el in page.css('a[href]'):
-        text = el.text.strip() if el.text else ''
+        text = _element_text(el)
         href = el.attrib.get('href', '')
         if not (8 <= len(text) <= 80):
             continue
@@ -408,7 +499,7 @@ def _extract_with_selectors(page, site_url: str, selectors: dict,
         if title_attr:
             text = (el.attrib.get(title_attr, '') or '').strip()
         else:
-            text = el.text.strip() if el.text else ''
+            text = _element_text(el)
         href = el.attrib.get('href', '')
 
         if not (min_len <= len(text) <= max_len):
@@ -465,8 +556,31 @@ def crawl_rss(site: dict) -> list[dict]:
         )
         response.raise_for_status()
         feed = feedparser.parse(response.content)
-    except (requests.RequestException, ValueError, TypeError):
+    except (requests.RequestException, ValueError, TypeError) as exc:
+        response = getattr(exc, 'response', None)
+        status = getattr(response, 'status_code', None)
+        _record_crawl_error(
+            site,
+            'rss_fetch',
+            f'RSS 请求失败：{type(exc).__name__}: {exc}',
+            url=rss_url,
+            status=status,
+        )
         return []
+
+    if getattr(feed, 'bozo', False) and not feed.entries:
+        exc = getattr(feed, 'bozo_exception', None)
+        _record_crawl_error(
+            site,
+            'rss_parse',
+            f'RSS 解析失败：{exc or "未知格式错误"}',
+            url=rss_url,
+            status=response.status_code,
+        )
+        return []
+
+    if not feed.entries:
+        site['_crawl_empty_source'] = True
 
     items = []
     seen_urls: set[str] = set()
@@ -500,10 +614,35 @@ def crawl_html(site: dict) -> list[dict]:
     """用 Scrapling Fetcher 抓取首页，提取文章链接"""
     try:
         page = Fetcher.get(site['url'], timeout=10)
-    except Exception:
+    except Exception as exc:
+        _record_crawl_error(
+            site,
+            'list_fetch',
+            f'HTML 列表请求失败：{type(exc).__name__}: {exc}',
+            url=site.get('url', ''),
+        )
         return []
     max_items = site.get('max_items', 200)
-    return _extract_articles(page, site['url'], site.get('selectors'), max_items)
+    status = _page_status(page)
+    if status is not None and status >= 400:
+        _record_crawl_error(
+            site,
+            'list_fetch',
+            f'HTML 列表页返回 HTTP {status}',
+            url=site.get('url', ''),
+            status=status,
+        )
+        return []
+    items = _extract_articles(page, site['url'], site.get('selectors'), max_items)
+    if not items:
+        _record_crawl_error(
+            site,
+            'list_extract',
+            'HTML 列表页访问成功，但当前规则未匹配到文章链接',
+            url=site.get('url', ''),
+            status=status,
+        )
+    return items
 
 
 def crawl_js(site: dict) -> list[dict]:
@@ -513,10 +652,35 @@ def crawl_js(site: dict) -> list[dict]:
             site['url'],
             headless=True, network_idle=True, disable_resources=True, timeout=30000
         )
-    except Exception:
+    except Exception as exc:
+        _record_crawl_error(
+            site,
+            'list_fetch',
+            f'JS 列表请求失败：{type(exc).__name__}: {exc}',
+            url=site.get('url', ''),
+        )
         return []
     max_items = site.get('max_items', 200)
-    return _extract_articles(page, site['url'], site.get('selectors'), max_items)
+    status = _page_status(page)
+    if status is not None and status >= 400:
+        _record_crawl_error(
+            site,
+            'list_fetch',
+            f'JS 列表页返回 HTTP {status}',
+            url=site.get('url', ''),
+            status=status,
+        )
+        return []
+    items = _extract_articles(page, site['url'], site.get('selectors'), max_items)
+    if not items:
+        _record_crawl_error(
+            site,
+            'list_extract',
+            'JS 列表页访问成功，但当前规则未匹配到文章链接',
+            url=site.get('url', ''),
+            status=status,
+        )
+    return items
 
 
 def crawl_stealth(site: dict) -> list[dict]:
@@ -526,16 +690,43 @@ def crawl_stealth(site: dict) -> list[dict]:
             site['url'],
             headless=True, network_idle=True, disable_resources=True, timeout=30000
         )
-    except Exception:
+    except Exception as exc:
+        _record_crawl_error(
+            site,
+            'list_fetch',
+            f'Stealth 列表请求失败：{type(exc).__name__}: {exc}',
+            url=site.get('url', ''),
+        )
         return []
     max_items = site.get('max_items', 200)
-    return _extract_articles(page, site['url'], site.get('selectors'), max_items)
+    status = _page_status(page)
+    if status is not None and status >= 400:
+        _record_crawl_error(
+            site,
+            'list_fetch',
+            f'Stealth 列表页返回 HTTP {status}',
+            url=site.get('url', ''),
+            status=status,
+        )
+        return []
+    items = _extract_articles(page, site['url'], site.get('selectors'), max_items)
+    if not items:
+        _record_crawl_error(
+            site,
+            'list_extract',
+            'Stealth 列表页访问成功，但当前规则未匹配到文章链接',
+            url=site.get('url', ''),
+            status=status,
+        )
+    return items
 
 
 def crawl_site(site: dict) -> dict | None:
     """根据 crawl_mode 路由到对应抓取函数，返回结果 dict 或 None"""
     if site.get('crawl_paused'):
         return None
+
+    _clear_crawl_diagnostics(site)
 
     if '_crawl_deadline' not in site:
         try:
@@ -570,13 +761,34 @@ def crawl_site(site: dict) -> dict | None:
             method = 'html'
 
     if not items:
-        return None
+        return {
+            'site_id': site['id'],
+            'site_name': site['name'],
+            'site_url': site['url'],
+            'method': method,
+            'count': 0,
+            'items': [],
+            'raw_article_count': 0,
+            'eligible_article_count': 0,
+            'age_filtered_count': 0,
+            'history_filtered_count': 0,
+            'new_article_count': 0,
+            'empty_source': bool(site.get('_crawl_empty_source')),
+            'error': site.get('_crawl_error', ''),
+            'error_stage': site.get('_crawl_error_stage', ''),
+            'http_status': site.get('_crawl_http_status'),
+            'error_url': site.get('_crawl_error_url', ''),
+            'timed_out': bool(site.get('_crawl_timed_out')),
+        }
 
+    discovered_article_count = len(items)
     max_age_days = site.get('max_article_age_days', 0)
     if max_age_days > 0:
         items = _filter_by_age(items, max_age_days)
 
-    raw_article_count = len(items)
+    eligible_article_count = len(items)
+    age_filtered_count = discovered_article_count - eligible_article_count
+    raw_article_count = discovered_article_count
     history_filtered_count = 0
     skip_urls = {
         normalized for normalized in
@@ -601,9 +813,17 @@ def crawl_site(site: dict) -> dict | None:
             'count': 0,
             'items': [],
             'raw_article_count': raw_article_count,
+            'eligible_article_count': eligible_article_count,
+            'age_filtered_count': age_filtered_count,
             'history_filtered_count': history_filtered_count,
             'new_article_count': 0,
-            'no_new_items': raw_article_count > 0 and history_filtered_count >= raw_article_count,
+            'no_recent_items': (
+                discovered_article_count > 0 and eligible_article_count == 0
+            ),
+            'no_new_items': (
+                eligible_article_count > 0 and
+                history_filtered_count >= eligible_article_count
+            ),
             'timed_out': bool(site.get('_crawl_timed_out')),
         }
 
@@ -621,6 +841,9 @@ def crawl_site(site: dict) -> dict | None:
             content_site,
         )
         site['_crawl_timed_out'] = content_site.get('_crawl_timed_out', False)
+        article_errors = content_site.get('_article_errors', [])
+    else:
+        article_errors = []
 
     if not items:
         return None
@@ -633,8 +856,11 @@ def crawl_site(site: dict) -> dict | None:
         'count': len(items),
         'items': items,
         'raw_article_count': raw_article_count,
+        'eligible_article_count': eligible_article_count,
+        'age_filtered_count': age_filtered_count,
         'history_filtered_count': history_filtered_count,
         'new_article_count': len(items),
+        'article_errors': article_errors,
         'timed_out': bool(site.get('_crawl_timed_out')),
     }
 

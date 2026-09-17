@@ -15,6 +15,25 @@ def _make_mock_element(text, href, attrib=None):
     return el
 
 
+def test_extract_with_selectors_falls_back_to_nested_text():
+    from crawler import _extract_articles
+
+    element = _make_mock_element('', '/news/2026/09/17/example')
+    element.get_all_text.return_value = 'Nested article title with original case'
+    page = MagicMock()
+    page.css.return_value = [element]
+    selectors = {
+        'css_selector': 'a.title-wrapper[href]',
+        'url_pattern': r'/news/\d{4}/\d{2}/\d{2}/',
+        'min_title_len': 12,
+        'max_title_len': 100,
+    }
+
+    items = _extract_articles(page, 'https://example.com', selectors)
+
+    assert items[0]['title'] == 'Nested article title with original case'
+
+
 def test_extract_articles_basic():
     """基本提取：标题长度 8-80，href 含日期模式"""
     from crawler import _extract_articles
@@ -478,6 +497,7 @@ def test_attach_article_content_passes_site_content_selector():
         'https://example.com/article',
         'stealth',
         'div.col-md-8.content-wrapper',
+        diagnostics=site,
     )
 
 
@@ -502,6 +522,7 @@ def test_article_crawl_mode_overrides_listing_mode():
         'https://example.com/article',
         'stealth',
         'article .body',
+        diagnostics=site,
     )
 
 
@@ -558,8 +579,8 @@ def test_preview_site_rules_limits_items_and_reports_hits():
     assert mock_content.call_count == 3
 
 
-def test_crawl_site_returns_none_on_empty():
-    """抓取结果为空 → 返回 None"""
+def test_crawl_site_returns_diagnostics_on_empty():
+    """抓取结果为空时仍返回结构化结果，供日志区分失败原因。"""
     from crawler import crawl_site
 
     site = {'id': '7', 'name': 'Empty', 'url': 'https://empty.com', 'status': 'no_rss'}
@@ -567,7 +588,52 @@ def test_crawl_site_returns_none_on_empty():
     with patch('crawler.crawl_html', return_value=[]):
         result = crawl_site(site)
 
-    assert result is None
+    assert result['count'] == 0
+    assert result['raw_article_count'] == 0
+    assert result['method'] == 'html'
+
+
+def test_crawl_site_reports_items_filtered_by_age_as_no_recent():
+    from crawler import crawl_site
+
+    site = {
+        'id': 'age-1',
+        'name': 'Old Feed',
+        'url': 'https://example.com',
+        'status': 'no_rss',
+        'max_article_age_days': 1,
+    }
+    old_items = [{
+        'title': 'Old article',
+        'url': 'https://example.com/article-1',
+        'published': '2020-01-01',
+    }]
+
+    with patch('crawler.crawl_html', return_value=old_items), \
+         patch('crawler._attach_article_content') as mock_attach:
+        result = crawl_site(site)
+
+    assert result['raw_article_count'] == 1
+    assert result['eligible_article_count'] == 0
+    assert result['age_filtered_count'] == 1
+    assert result['no_recent_items'] is True
+    assert result['no_new_items'] is False
+    mock_attach.assert_not_called()
+
+
+def test_crawl_rss_records_http_failure_details():
+    from crawler import crawl_rss
+
+    site = {'rss_url': 'https://rss.example.com/feed'}
+    response = MagicMock(status_code=403)
+    error = requests.HTTPError('403 Client Error', response=response)
+
+    with patch('crawler.requests.get', side_effect=error):
+        assert crawl_rss(site) == []
+
+    assert site['_crawl_error_stage'] == 'rss_fetch'
+    assert site['_crawl_http_status'] == 403
+    assert 'HTTPError' in site['_crawl_error']
 
 
 def test_crawl_all_splits_by_mode(tmp_path):
@@ -833,3 +899,18 @@ def test_filter_by_age_crawled_at_fallback():
     result = _filter_by_age(items, 7)
     assert len(result) == 1
     assert result[0]['title'] == 'recent crawl'
+
+
+def test_filter_by_age_treats_date_only_value_as_end_of_day():
+    from crawler import _filter_by_age
+    from datetime import datetime, timedelta
+
+    today = datetime.now().date()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    items = [{
+        'title': 'yesterday date only',
+        'url': 'http://a.com/1',
+        'published': yesterday,
+    }]
+
+    assert _filter_by_age(items, 1) == items

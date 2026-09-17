@@ -452,12 +452,13 @@ function renderCrawlLogs(logs) {
           <div class="crawl-log-site-meta">
             <span class="crawl-log-status-${esc(status)}">${crawlLogStatusText(status)}</span>
             <span> · 抓到 ${Number(site.raw_article_count ?? site.article_count ?? 0)} 篇</span>
+            <span> · 时效外 ${Number(site.age_filtered_count || 0)} 篇</span>
             <span> · 过滤 ${Number(site.history_filtered_count || 0)} 篇</span>
             <span> · 新增 ${Number(site.new_article_count ?? site.article_count ?? 0)} 篇</span>
             <span> · 正文 ${Number(site.content_count || 0)} 篇</span>
             <span> · 翻译失败 ${Number(site.translation_failed_count || 0)} 篇</span>
           </div>
-          <div class="crawl-log-site-reason">${esc(site.reason || '')}</div>
+          <div class="crawl-log-site-reason">${esc(site.reason || '')}${site.http_status ? `（HTTP ${Number(site.http_status)}）` : ''}</div>
         </div>
       `;
     }).join('');
@@ -470,6 +471,7 @@ function renderCrawlLogs(logs) {
           <span>${esc(source)}</span>
           <span>新增 ${Number(log.new_article_count ?? log.total_articles ?? 0)} 篇</span>
           <span>正文 ${Number(log.content_count || 0)} 篇</span>
+          <span>时效外 ${Number(log.age_filtered_count || 0)} 篇</span>
           <span>过滤 ${Number(log.history_filtered_count || 0)} 篇</span>
           <span>成功 ${Number(log.success_count || 0)}</span>
           <span>部分 ${Number(log.partial_count || 0)}</span>

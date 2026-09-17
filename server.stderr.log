@@ -1,0 +1,67 @@
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on http://127.0.0.1:5001
+Press CTRL+C to quit
+127.0.0.1 - - [17/Sep/2026 09:59:57] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [17/Sep/2026 10:02:06] "GET /api/system/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Sep/2026 10:09:27] "GET /api/system/status HTTP/1.1" 200 -
+[2026-09-17 10:58:39] WARNING: Attempt 1 failed: Failed to perform, curl: (28) Resolving timed out after 10010 milliseconds. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.. Retrying in 1 seconds...
+[2026-09-17 10:58:39] WARNING: Attempt 1 failed: Failed to perform, curl: (28) Resolving timed out after 10003 milliseconds. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.. Retrying in 1 seconds...
+[2026-09-17 10:58:40] WARNING: Attempt 1 failed: Failed to perform, curl: (28) Resolving timed out after 10005 milliseconds. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.. Retrying in 1 seconds...
+[2026-09-17 10:58:42] INFO: Fetched (403) <GET https://www.militaryaerospace.com/> (referer: https://www.google.com/)
+[2026-09-17 10:58:42] WARNING: Attempt 1 failed: Failed to perform, curl: (28) Resolving timed out after 10000 milliseconds. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.. Retrying in 1 seconds...
+[2026-09-17 10:58:44] INFO: Fetched (200) <GET https://www.defensenews.com/> (referer: https://www.google.com/)
+[2026-09-17 10:58:45] INFO: Fetched (200) <GET https://www.asdnews.com/> (referer: https://www.google.com/)
+[2026-09-17 10:58:46] INFO: Fetched (200) <GET https://www.asdnews.com/news/defense/2026/09/15/gaasi-tactical-air-support-showcase-how-passive-sensing-semiautonomous-aircraft-close-kill-chains-versus-adversaries> (referer: https://www.google.com/)
+[2026-09-17 10:58:47] INFO: Fetched (200) <GET https://www.defensenews.com/news/your-military/2026/09/16/ai-military-targeting-may-move-faster-than-humans-can-authenticate-critics-warn/> (referer: https://www.google.com/)
+[2026-09-17 10:58:47] INFO: Fetched (200) <GET https://www.c4isrnet.com/> (referer: https://www.google.com/)
+[2026-09-17 10:58:48] INFO: Fetched (200) <GET https://www.asdnews.com/news/defense/2026/09/15/droneshield-completes-installation-acceptance-dronesentryx-mk2-under-us-jiatf401-program> (referer: https://www.google.com/)
+[2026-09-17 10:58:49] WARNING: Attempt 1 failed: Failed to perform, curl: (35) BoringSSL SSL_connect: Connection closed abruptly (SSL_ERROR_SYSCALL; error queue empty) in connection to www.armyrecognition.com:443. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.. Retrying in 1 seconds...
+[2026-09-17 10:58:50] INFO: Fetched (200) <GET https://www.defensenews.com/news/your-air-force/2026/09/16/us-not-prepared-to-respond-to-nuclear-attacks-in-space-report-says/> (referer: https://www.google.com/)
+[2026-09-17 10:58:50] INFO: Fetched (200) <GET https://www.c4isrnet.com/news/your-military/2026/09/16/ai-military-targeting-may-move-faster-than-humans-can-authenticate-critics-warn/> (referer: https://www.google.com/)
+[2026-09-17 10:58:50] INFO: Fetched (200) <GET https://www.asdnews.com/news/defense/2026/09/15/modernizing-kc135-decades-mission-readiness> (referer: https://www.google.com/)
+[2026-09-17 10:58:51] INFO: Fetched (200) <GET https://www.armyrecognition.com/news/army-news/2026/defender-returns-to-uk-military-market-with-wolf-series-ii-variants-for-light-mobility-vehicle-bid> (referer: https://www.google.com/)
+[2026-09-17 10:58:52] INFO: Fetched (200) <GET https://www.asdnews.com/news/defense/2026/09/15/parazero-thirdeye-systems-sign-mou-develop-360-detecttodefeat-counteruas-solution-armored-vehicles-critical-assets> (referer: https://www.google.com/)
+[2026-09-17 10:58:53] INFO: Fetched (200) <GET https://www.c4isrnet.com/global/europe/2026/09/15/italian-nato-jet-downs-drone-in-lithuania-minister-says-it-probably-came-from-russia/> (referer: https://www.google.com/)
+[2026-09-17 10:58:53] INFO: Fetched (200) <GET https://www.armyrecognition.com/news/army-news/2026/british-army-reveals-latest-challenger-3-tank-prototype-as-nato-prepares-for-armored-warfare-with-russia> (referer: https://www.google.com/)
+[2026-09-17 10:58:53] INFO: Fetched (200) <GET https://www.asdnews.com/news/defense/2026/09/15/aselsan-expands-its-footprint-with-new-export-contract-at-mspo-2026> (referer: https://www.google.com/)
+[2026-09-17 10:58:54] INFO: Fetched (200) <GET https://www.defensenews.com/global/mideast-africa/2026/09/16/israels-spice-1000-bombs-can-soon-drop-from-f-35-fighters/> (referer: https://www.google.com/)
+[2026-09-17 10:58:55] INFO: Fetched (200) <GET https://www.asdnews.com/news/defense/2026/09/15/idv-selected-us-army-engineer-autonomous-breaching-capability-initiative> (referer: https://www.google.com/)
+[2026-09-17 10:58:55] INFO: Fetched (200) <GET https://news.lockheedmartin.com/news-releases> (referer: https://www.google.com/)
+[2026-09-17 10:58:56] INFO: Fetched (200) <GET https://www.satellitetoday.com/> (referer: https://www.google.com/)
+[2026-09-17 10:58:57] INFO: Fetched (200) <GET https://www.asdnews.com/news/aerospace/2026/09/15/electra-atlas-sign-airframe-agreement-el9-ultra-short> (referer: https://www.google.com/)
+[2026-09-17 10:58:57] INFO: Fetched (200) <GET https://news.lockheedmartin.com/2026-09-16-Lockheed-Martin-Demonstrates-Legion-Sensor-System-with-Pod-to-Pod-Data-Link> (referer: https://www.google.com/)
+[2026-09-17 10:58:57] INFO: Fetched (403) <GET https://www.satellitetoday.com/government-military/2026/09/15/sovereign-eo-space-capabilities-are-ready-to-go-to-the-next-level/> (referer: https://www.google.com/)
+[2026-09-17 10:58:58] INFO: Fetched (200) <GET https://www.defensenews.com/news/your-military/2026/09/16/us-military-must-adapt-as-formations-will-be-hunted-by-autonomous-systems-caine-says/> (referer: https://www.google.com/)
+[2026-09-17 10:58:59] INFO: Fetched (403) <GET https://www.satellitetoday.com/launch/2026/09/16/seops-buys-five-launches-from-isar-aerospace/> (referer: https://www.google.com/)
+[2026-09-17 10:59:00] INFO: Fetched (200) <GET https://www.asdnews.com/news/defense/2026/09/15/netherlands-naval-group-extend-industrial-cooperation-agreement> (referer: https://www.google.com/)
+[2026-09-17 10:59:01] INFO: Fetched (200) <GET https://www.defensenews.com/news/pentagon-congress/2026/09/15/iranian-strikes-damaged-hundreds-of-us-military-buildings-dozens-of-aircraft/> (referer: https://www.google.com/)
+[2026-09-17 10:59:01] INFO: Fetched (403) <GET https://www.satellitetoday.com/technology/2026/09/15/nextnavs-5g-powered-3d-pnt-inches-closer-to-gps-accuracy-during-outdoor-demonstration/> (referer: https://www.google.com/)
+[2026-09-17 10:59:04] INFO: Fetched (200) <GET https://www.asdnews.com/news/aerospace/2026/09/15/hermeus-manufacture-pratt-whitneys-f100pw229-engine-under-new-production-licensing-agreement> (referer: https://www.google.com/)
+[2026-09-17 10:59:08] INFO: Fetched (200) <GET https://www.asdnews.com/news/defense/2026/09/15/introducing-agm158-flex-airframe> (referer: https://www.google.com/)
+[2026-09-17 10:59:14] INFO: Fetched (200) <GET https://www.defensenews.com/news/your-military/2026/09/15/us-marine-stand-in-forces-in-the-pacific-a-concern-to-china-report-details/> (referer: https://www.google.com/)
+[2026-09-17 10:59:19] INFO: Fetched (200) <GET https://www.defensenews.com/air/2026/09/15/f-35-proved-combat-readiness-during-middle-east-deployments-air-force-officials-say/> (referer: https://www.google.com/)
+[2026-09-17 10:59:22] INFO: Fetched (200) <GET https://www.asdnews.com/news/defense/2026/09/15/honeywell-aerospace-engine-selected-us-air-force-preliminary-design> (referer: https://www.google.com/)
+[2026-09-17 10:59:25] INFO: Fetched (200) <GET https://www.asdnews.com/news/aerospace/2026/09/15/how-otto-aerospace-designed-sleeker-more-fuelefficient-business-jet> (referer: https://www.google.com/)
+[2026-09-17 10:59:30] INFO: Fetched (200) <GET https://www.defensenews.com/news/your-military/2026/09/15/us-space-force-to-add-10000-guardians-in-next-5-years/> (referer: https://www.google.com/)
+[2026-09-17 10:59:31] INFO: Fetched (200) <GET https://www.asdnews.com/news/aerospace/2026/09/15/isar-aerospace-signs-multiple-launch-service-agreement-with-usbased-seops-five-additional-launches> (referer: https://www.google.com/)
+[2026-09-17 10:59:34] INFO: Fetched (200) <GET https://www.defensenews.com/news/your-military/2026/09/15/tanker-fleet-modernization-will-continue-for-decades-us-air-force-officials-say/> (referer: https://www.google.com/)
+[2026-09-17 10:59:45] INFO: Fetched (200) <GET https://www.defensenews.com/news/your-military/2026/09/15/iran-war-has-cost-38-billion-depleted-two-thirds-of-us-missile-interceptors-cbo-says/> (referer: https://www.google.com/)
+[2026-09-17 10:59:46] INFO: Fetched (200) <GET https://www.asdnews.com/news/aerospace/2026/09/15/pratt-whitney-completes-f135-engine-core-upgrade-risk-reduction-design-review> (referer: https://www.google.com/)
+[2026-09-17 10:59:48] INFO: Fetched (200) <GET https://www.asdnews.com/news/aerospace/2026/09/15/hondajet-echelon-program-advances-with-completion-first-aircraft-wing-assembly> (referer: https://www.google.com/)
+[2026-09-17 11:00:45] INFO: Fetched (307) <GET https://www.unmannedsystemstechnology.com/category/news/> (referer: https://www.google.com/)
+[2026-09-17 11:00:45] INFO: Fetched (403) <GET https://www.unmannedsystemstechnology.com/category/news/> (referer: https://www.google.com/)
+[2026-09-17 11:58:17] INFO: Fetched (403) <GET https://www.militaryaerospace.com/> (referer: https://www.google.com/)
+[2026-09-17 11:58:17] INFO: Fetched (200) <GET https://www.defensenews.com/> (referer: https://www.google.com/)
+[2026-09-17 11:58:19] INFO: Fetched (200) <GET https://www.c4isrnet.com/> (referer: https://www.google.com/)
+[2026-09-17 11:58:19] INFO: Fetched (200) <GET https://www.asdnews.com/> (referer: https://www.google.com/)
+[2026-09-17 11:58:20] INFO: Fetched (200) <GET https://www.satellitetoday.com/> (referer: https://www.google.com/)
+[2026-09-17 11:58:21] INFO: Fetched (200) <GET https://news.lockheedmartin.com/news-releases> (referer: https://www.google.com/)
+[2026-09-17 11:58:38] INFO: Fetched (307) <GET https://www.unmannedsystemstechnology.com/category/news/> (referer: https://www.google.com/)
+[2026-09-17 11:58:38] INFO: Fetched (200) <GET https://www.unmannedsystemstechnology.com/category/news/> (referer: https://www.google.com/)
+127.0.0.1 - - [17/Sep/2026 12:16:35] "GET /api/crawl/logs HTTP/1.1" 200 -
+[2026-09-17 12:58:19] INFO: Fetched (403) <GET https://www.militaryaerospace.com/> (referer: https://www.google.com/)
+[2026-09-17 12:58:19] INFO: Fetched (200) <GET https://www.defensenews.com/> (referer: https://www.google.com/)
+[2026-09-17 12:58:21] INFO: Fetched (200) <GET https://www.asdnews.com/> (referer: https://www.google.com/)
+[2026-09-17 12:58:21] INFO: Fetched (200) <GET https://news.lockheedmartin.com/news-releases> (referer: https://www.google.com/)
+[2026-09-17 12:58:23] INFO: Fetched (200) <GET https://www.c4isrnet.com/> (referer: https://www.google.com/)
+[2026-09-17 12:58:30] INFO: Fetched (200) <GET https://www.satellitetoday.com/> (referer: https://www.google.com/)

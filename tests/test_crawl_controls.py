@@ -205,6 +205,29 @@ def test_crawl_one_route_writes_title_only_failure_log(monkeypatch, tmp_path):
     assert logs[-1]["sites"][0]["reason"] == "只抓取到标题，未抓到原文"
 
 
+def test_site_result_log_explains_article_http_failure():
+    site = {
+        "id": "site-1",
+        "name": "Example",
+        "url": "https://example.com",
+    }
+    result = {
+        "method": "html",
+        "count": 1,
+        "items": [{"title": "Title only", "content": ""}],
+        "article_errors": [{
+            "url": "https://example.com/article",
+            "error": "详情页返回 HTTP 403",
+            "http_status": 403,
+        }],
+    }
+
+    log = app_module._site_result_log(site, result)
+
+    assert log["status"] == "failed"
+    assert log["reason"] == "只抓取到标题，未抓到原文：详情页返回 HTTP 403"
+
+
 def test_site_result_log_marks_history_filtered_items_as_no_new():
     site = {
         "id": "site-1",
@@ -228,6 +251,56 @@ def test_site_result_log_marks_history_filtered_items_as_no_new():
     assert log["raw_article_count"] == 3
     assert log["history_filtered_count"] == 3
     assert log["new_article_count"] == 0
+
+
+def test_site_result_log_marks_age_filtered_items_as_no_recent():
+    site = {
+        "id": "site-1",
+        "name": "Example",
+        "url": "https://example.com",
+    }
+    result = {
+        "method": "rss",
+        "count": 0,
+        "items": [],
+        "raw_article_count": 10,
+        "eligible_article_count": 0,
+        "age_filtered_count": 10,
+        "history_filtered_count": 0,
+        "new_article_count": 0,
+        "no_recent_items": True,
+    }
+
+    log = app_module._site_result_log(site, result)
+
+    assert log["status"] == "skipped"
+    assert log["reason"] == "站点访问正常，但没有符合时效范围的文章"
+    assert log["raw_article_count"] == 10
+    assert log["age_filtered_count"] == 10
+
+
+def test_site_result_log_keeps_http_failure_diagnostics():
+    site = {
+        "id": "site-1",
+        "name": "Example",
+        "url": "https://example.com",
+    }
+    result = {
+        "method": "rss",
+        "count": 0,
+        "items": [],
+        "error": "RSS 请求失败：HTTP 403",
+        "error_stage": "rss_fetch",
+        "http_status": 403,
+        "error_url": "https://example.com/feed/",
+    }
+
+    log = app_module._site_result_log(site, result)
+
+    assert log["status"] == "failed"
+    assert log["http_status"] == 403
+    assert log["error_stage"] == "rss_fetch"
+    assert log["error_url"] == "https://example.com/feed/"
 
 
 def test_crawl_run_log_summarizes_new_filtered_and_content_counts():
