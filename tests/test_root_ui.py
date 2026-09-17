@@ -102,6 +102,26 @@ def test_root_homepage_exposes_rolling_day_week_month_stats_card():
     assert "按镜像历史快照日期计入当月、本周和本日" in page
 
 
+def test_root_homepage_exposes_scrollable_crawl_log_panel():
+    app_module.app.config["TESTING"] = True
+
+    with app_module.app.test_client() as client:
+        page = client.get("/").get_data(as_text=True)
+
+    assert 'id="crawlLogBody"' in page
+    assert 'id="btnClearCrawlLogDisplay"' in page
+    assert "async function loadCrawlLogs()" in page
+    assert "/api/crawl/logs" in page
+    assert "crawlLogStatusText(status)" in page
+    assert "无新增" in page
+    assert "过滤" in page
+    assert "新增" in page
+    assert "正文 ${Number(log.content_count || 0)} 篇" in page
+    assert "文章 ${Number(log.total_articles || 0)} 篇" not in page
+    assert "翻译失败" in page
+    assert "已清空当前显示，历史记录仍保存在本地" in page
+
+
 def test_root_homepage_interval_select_offers_1_to_12_hours():
     app_module.app.config["TESTING"] = True
 

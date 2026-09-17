@@ -576,19 +576,36 @@ def crawl_site(site: dict) -> dict | None:
     if max_age_days > 0:
         items = _filter_by_age(items, max_age_days)
 
+    raw_article_count = len(items)
+    history_filtered_count = 0
     skip_urls = {
         normalized for normalized in
         (_normalize_url(url) for url in site.get('_skip_urls', []))
         if normalized
     }
     if skip_urls:
-        items = [
-            item for item in items
-            if _normalize_url(item.get('url', '')) not in skip_urls
-        ]
+        new_items = []
+        for item in items:
+            if _normalize_url(item.get('url', '')) in skip_urls:
+                history_filtered_count += 1
+                continue
+            new_items.append(item)
+        items = new_items
 
     if not items:
-        return None
+        return {
+            'site_id': site['id'],
+            'site_name': site['name'],
+            'site_url': site['url'],
+            'method': method,
+            'count': 0,
+            'items': [],
+            'raw_article_count': raw_article_count,
+            'history_filtered_count': history_filtered_count,
+            'new_article_count': 0,
+            'no_new_items': raw_article_count > 0 and history_filtered_count >= raw_article_count,
+            'timed_out': bool(site.get('_crawl_timed_out')),
+        }
 
     if site.get('fetch_article_content', True):
         article_mode = site.get('crawl_mode', 'auto')
@@ -615,6 +632,9 @@ def crawl_site(site: dict) -> dict | None:
         'method': method,
         'count': len(items),
         'items': items,
+        'raw_article_count': raw_article_count,
+        'history_filtered_count': history_filtered_count,
+        'new_article_count': len(items),
         'timed_out': bool(site.get('_crawl_timed_out')),
     }
 
@@ -665,8 +685,16 @@ def crawl_all(sites: list[dict], data_dir: Path,
                         result = future.result()
                         if result is not None:
                             results.append(result)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        result = {
+                            'site_id': site.get('id'),
+                            'site_name': site.get('name', ''),
+                            'site_url': site.get('url', ''),
+                            'method': site.get('crawl_mode', 'auto'),
+                            'count': 0,
+                            'items': [],
+                            'error': str(exc),
+                        }
                     if progress_cb:
                         progress_cb(site, result)
 
@@ -676,8 +704,16 @@ def crawl_all(sites: list[dict], data_dir: Path,
                     result = future.result()
                     if result is not None:
                         results.append(result)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    result = {
+                        'site_id': site.get('id'),
+                        'site_name': site.get('name', ''),
+                        'site_url': site.get('url', ''),
+                        'method': site.get('crawl_mode', 'auto'),
+                        'count': 0,
+                        'items': [],
+                        'error': str(exc),
+                    }
                 if progress_cb:
                     progress_cb(site, result)
 

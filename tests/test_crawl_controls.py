@@ -60,6 +60,7 @@ def test_output_site_test_writes_report_without_saving_crawl_result(monkeypatch,
     }
     report_path = tmp_path / "Example _ Site.txt"
     monkeypatch.setattr(app_module, "load_sites", lambda: [site])
+    monkeypatch.setattr(app_module, "load_config", lambda: {"translation": {"enabled": False}})
     monkeypatch.setattr(app_module, "_test_report_path", lambda name: report_path)
     monkeypatch.setattr(
         app_module,
@@ -137,6 +138,123 @@ def test_output_site_test_uses_translation_channel(monkeypatch, tmp_path):
     report = report_path.read_text(encoding="utf-8")
     assert "中文标题" in report
     assert "中文正文" in report
+
+
+def test_crawl_logs_api_returns_local_history_newest_first(monkeypatch, tmp_path):
+    log_file = tmp_path / "crawl_logs.jsonl"
+    monkeypatch.setattr(app_module, "CRAWL_LOG_FILE", log_file)
+    app_module._append_crawl_log({
+        "source": "全部抓取",
+        "finished_at": "2026-09-16 10:00:00",
+        "sites": [],
+    })
+    app_module._append_crawl_log({
+        "source": "单站抓取",
+        "finished_at": "2026-09-16 11:00:00",
+        "sites": [],
+    })
+    app_module.app.config["TESTING"] = True
+
+    with app_module.app.test_client() as client:
+        response = client.get("/api/crawl/logs")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert [item["source"] for item in payload["logs"]] == ["单站抓取", "全部抓取"]
+    assert log_file.exists()
+
+
+def test_crawl_one_route_writes_title_only_failure_log(monkeypatch, tmp_path):
+    site = {
+        "id": "site-1",
+        "name": "Example",
+        "url": "https://example.com",
+    }
+    log_file = tmp_path / "crawl_logs.jsonl"
+    monkeypatch.setattr(app_module, "CRAWL_LOG_FILE", log_file)
+    monkeypatch.setattr(app_module, "load_sites", lambda: [site])
+    monkeypatch.setattr(app_module, "load_config", lambda: {"site_timeout_seconds": 300})
+    monkeypatch.setattr(app_module, "_known_urls_for_site", lambda site_id: set())
+    monkeypatch.setattr(app_module, "_dedupe_items_with_mirror", lambda site_id, items: items)
+    monkeypatch.setattr(app_module, "_save_single_result", lambda site_id, result: result)
+    monkeypatch.setattr(
+        app_module,
+        "_crawl_site",
+        lambda tested_site: {
+            "site_id": "site-1",
+            "site_name": "Example",
+            "site_url": "https://example.com",
+            "method": "html",
+            "count": 1,
+            "items": [{
+                "title": "Title only",
+                "url": "https://example.com/a",
+                "content": "",
+            }],
+        },
+    )
+    app_module.app.config["TESTING"] = True
+
+    with app_module.app.test_client() as client:
+        response = client.post("/api/crawl/site-1")
+
+    assert response.status_code == 200
+    logs = app_module._read_crawl_logs()
+    assert logs[-1]["source"] == "单站抓取"
+    assert logs[-1]["failed_count"] == 1
+    assert logs[-1]["sites"][0]["reason"] == "只抓取到标题，未抓到原文"
+
+
+def test_site_result_log_marks_history_filtered_items_as_no_new():
+    site = {
+        "id": "site-1",
+        "name": "Example",
+        "url": "https://example.com",
+    }
+    result = {
+        "method": "html",
+        "count": 0,
+        "items": [],
+        "raw_article_count": 3,
+        "history_filtered_count": 3,
+        "new_article_count": 0,
+        "no_new_items": True,
+    }
+
+    log = app_module._site_result_log(site, result)
+
+    assert log["status"] == "skipped"
+    assert log["reason"] == "本次抓到的文章均已存在历史记录"
+    assert log["raw_article_count"] == 3
+    assert log["history_filtered_count"] == 3
+    assert log["new_article_count"] == 0
+
+
+def test_crawl_run_log_summarizes_new_filtered_and_content_counts():
+    run = app_module._crawl_run_log(
+        "全部抓取",
+        "2026-09-16 16:05:04",
+        [
+            {
+                "status": "success",
+                "article_count": 2,
+                "new_article_count": 2,
+                "history_filtered_count": 0,
+                "content_count": 2,
+            },
+            {
+                "status": "skipped",
+                "article_count": 0,
+                "new_article_count": 0,
+                "history_filtered_count": 3,
+                "content_count": 0,
+            },
+        ],
+    )
+
+    assert run["new_article_count"] == 2
+    assert run["history_filtered_count"] == 3
+    assert run["content_count"] == 2
 
 
 def test_system_status_reports_scheduler_and_crawl_state(monkeypatch):

@@ -375,6 +375,37 @@ def test_crawl_site_skips_known_urls_before_content_fetch():
     assert [item['url'] for item in mock_attach.call_args.args[0]] == ['https://example.com/article-2']
 
 
+def test_crawl_site_reports_no_new_items_when_history_filters_everything():
+    from crawler import crawl_site
+
+    site = {
+        'id': '7',
+        'name': 'Skip Known',
+        'url': 'https://example.com',
+        'status': 'no_rss',
+        '_skip_urls': [
+            'https://example.com/article-1',
+            'https://example.com/article-2',
+        ],
+    }
+
+    with patch(
+        'crawler.crawl_html',
+        return_value=[
+            {'title': 'Old 1', 'url': 'https://example.com/article-1/', 'published': None},
+            {'title': 'Old 2', 'url': 'https://example.com/article-2', 'published': None},
+        ],
+    ), patch('crawler._attach_article_content') as mock_attach:
+        result = crawl_site(site)
+
+    assert result['count'] == 0
+    assert result['raw_article_count'] == 2
+    assert result['history_filtered_count'] == 2
+    assert result['new_article_count'] == 0
+    assert result['no_new_items'] is True
+    mock_attach.assert_not_called()
+
+
 def test_extract_page_content_prefers_article_text():
     """详情页正文优先从 article 等正文容器提取。"""
     from crawler import _extract_page_content
@@ -571,6 +602,29 @@ def test_crawl_all_empty_sites(tmp_path):
     results = crawl_all([], tmp_path)
     assert results == []
     assert list(tmp_path.glob('*.json')) == []
+
+
+def test_crawl_all_reports_site_exception_to_progress_callback(tmp_path):
+    from crawler import crawl_all
+
+    sites = [{
+        'id': 'blocked',
+        'name': 'Blocked',
+        'url': 'https://example.com',
+        'crawl_mode': 'html',
+    }]
+    progress = []
+
+    with patch('crawler.crawl_site', side_effect=RuntimeError('blocked')):
+        results = crawl_all(
+            sites,
+            tmp_path,
+            progress_cb=lambda site, result: progress.append((site, result)),
+        )
+
+    assert results == []
+    assert progress[0][0]['id'] == 'blocked'
+    assert progress[0][1]['error'] == 'blocked'
 
 
 def test_extract_articles_with_css_selector():

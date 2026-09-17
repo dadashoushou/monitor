@@ -61,6 +61,24 @@
   .stats-label-card { font-size: 13px; color: #666; }
   .stats-value-card { font-size: 28px; line-height: 1; font-weight: 700; color: #111; font-variant-numeric: tabular-nums; }
   .stats-note { margin-top: 18px; font-size: 12px; color: #888; line-height: 1.5; }
+  .crawl-log-card { grid-column: 1 / -1; padding: 16px 18px; }
+  .crawl-log-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  .crawl-log-title { font-size: 15px; font-weight: 600; color: #222; }
+  .crawl-log-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .crawl-log-body { height: 300px; overflow-y: auto; border: 1px solid #e5e5e5; border-radius: 8px; background: #fafafa; padding: 10px; font-size: 12px; line-height: 1.55; }
+  .crawl-log-empty { height: 100%; display: flex; align-items: center; justify-content: center; color: #999; }
+  .crawl-log-run { background: #fff; border: 1px solid #eee; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+  .crawl-log-run:last-child { margin-bottom: 0; }
+  .crawl-log-run-head { display: flex; gap: 12px; flex-wrap: wrap; align-items: baseline; color: #555; }
+  .crawl-log-run-time { font-weight: 600; color: #222; }
+  .crawl-log-sites { margin-top: 8px; display: grid; gap: 6px; }
+  .crawl-log-site { display: grid; grid-template-columns: minmax(140px, 1.5fr) minmax(120px, .8fr) minmax(160px, 2fr); gap: 8px; align-items: start; padding-top: 6px; border-top: 1px solid #f3f4f6; }
+  .crawl-log-site-name { font-weight: 600; color: #333; word-break: break-word; }
+  .crawl-log-site-meta { color: #666; }
+  .crawl-log-site-reason { color: #777; word-break: break-word; }
+  .crawl-log-status-success { color: #16a34a; font-weight: 600; }
+  .crawl-log-status-partial { color: #a16207; font-weight: 600; }
+  .crawl-log-status-failed { color: #dc2626; font-weight: 600; }
   .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; flex-shrink: 0; }
   .status-dot.busy { background: #3b82f6; animation: pulse 1.2s infinite; }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
@@ -114,6 +132,7 @@
     .header-primary { margin-left: 0; width: 100%; justify-content: flex-start; }
     .actions-stack { min-width: 0; }
     .actions { grid-template-columns: repeat(2, minmax(82px, 1fr)); }
+    .crawl-log-site { grid-template-columns: 1fr; }
     table { display: block; overflow-x: auto; }
   }
 </style>
@@ -189,6 +208,18 @@
       <span class="status-target" id="statusTarget">等待操作</span>
     </div>
     <div class="status-progress" id="statusProgress"><div class="status-fill" id="statusFill"></div></div>
+    </div>
+    <div class="card crawl-log-card">
+      <div class="crawl-log-header">
+        <h2 class="crawl-log-title">抓取消息</h2>
+        <div class="crawl-log-actions">
+          <button class="btn btn-secondary btn-sm" id="btnRefreshCrawlLogs">刷新</button>
+          <button class="btn btn-secondary btn-sm" id="btnClearCrawlLogDisplay">清空显示</button>
+        </div>
+      </div>
+      <div class="crawl-log-body" id="crawlLogBody">
+        <div class="crawl-log-empty">暂无抓取消息</div>
+      </div>
     </div>
   </div>
   <div class="card">
@@ -398,6 +429,72 @@ async function loadDashboardStats() {
   } catch (e) {}
 }
 
+function crawlLogStatusText(status) {
+  if (status === 'success') return '成功';
+  if (status === 'partial') return '部分成功';
+  if (status === 'skipped') return '无新增';
+  return '失败';
+}
+
+function renderCrawlLogs(logs) {
+  const body = document.getElementById('crawlLogBody');
+  if (!Array.isArray(logs) || logs.length === 0) {
+    body.innerHTML = '<div class="crawl-log-empty">暂无抓取消息</div>';
+    return;
+  }
+  body.innerHTML = logs.map(log => {
+    const sites = Array.isArray(log.sites) ? log.sites : [];
+    const siteRows = sites.map(site => {
+      const status = site.status || 'failed';
+      return `
+        <div class="crawl-log-site">
+          <div class="crawl-log-site-name">${esc(site.site_name || site.site_url || '未命名网站')}</div>
+          <div class="crawl-log-site-meta">
+            <span class="crawl-log-status-${esc(status)}">${crawlLogStatusText(status)}</span>
+            <span> · 抓到 ${Number(site.raw_article_count ?? site.article_count ?? 0)} 篇</span>
+            <span> · 过滤 ${Number(site.history_filtered_count || 0)} 篇</span>
+            <span> · 新增 ${Number(site.new_article_count ?? site.article_count ?? 0)} 篇</span>
+            <span> · 正文 ${Number(site.content_count || 0)} 篇</span>
+            <span> · 翻译失败 ${Number(site.translation_failed_count || 0)} 篇</span>
+          </div>
+          <div class="crawl-log-site-reason">${esc(site.reason || '')}</div>
+        </div>
+      `;
+    }).join('');
+    const source = log.source || '抓取';
+    const runError = log.error ? `<div class="crawl-log-site-reason">异常：${esc(log.error)}</div>` : '';
+    return `
+      <div class="crawl-log-run">
+        <div class="crawl-log-run-head">
+          <span class="crawl-log-run-time">${esc(log.finished_at || log.started_at || '')}</span>
+          <span>${esc(source)}</span>
+          <span>新增 ${Number(log.new_article_count ?? log.total_articles ?? 0)} 篇</span>
+          <span>正文 ${Number(log.content_count || 0)} 篇</span>
+          <span>过滤 ${Number(log.history_filtered_count || 0)} 篇</span>
+          <span>成功 ${Number(log.success_count || 0)}</span>
+          <span>部分 ${Number(log.partial_count || 0)}</span>
+          <span>无新增 ${Number(log.skipped_count || 0)}</span>
+          <span>失败 ${Number(log.failed_count || 0)}</span>
+        </div>
+        ${runError}
+        <div class="crawl-log-sites">${siteRows}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function loadCrawlLogs() {
+  try {
+    const { res, data } = await fetchJson('/api/crawl/logs');
+    if (!res.ok) return;
+    renderCrawlLogs(data.logs || []);
+  } catch (e) {}
+}
+
+function clearCrawlLogDisplay() {
+  document.getElementById('crawlLogBody').innerHTML = '<div class="crawl-log-empty">已清空当前显示，历史记录仍保存在本地</div>';
+}
+
 async function fetchJson(url, options = {}, timeoutMs = 10000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -529,6 +626,7 @@ async function crawlOne(id) {
     btn.disabled = false;
     btn.textContent = '抓取';
     loadSitesWithCrawlInfo();
+    loadCrawlLogs();
   }
 }
 
@@ -601,6 +699,7 @@ function startCrawlPolling() {
       } else if (s.stopped) {
         updateStatusBar('抓取已停止', null, '服务器已停止继续抓取剩余网站');
       }
+      await loadCrawlLogs();
     }
   }, 1500);
 }
@@ -976,6 +1075,9 @@ document.getElementById('btnCrawlAll').addEventListener('click', async () => {
   startCrawlPolling();
 });
 
+document.getElementById('btnRefreshCrawlLogs').addEventListener('click', loadCrawlLogs);
+document.getElementById('btnClearCrawlLogDisplay').addEventListener('click', clearCrawlLogDisplay);
+
 async function deleteSite(id) {
   if (!confirm('确认删除？')) return;
   await fetch('/api/sites/' + id, { method: 'DELETE' });
@@ -1067,6 +1169,7 @@ document.addEventListener('pointercancel', resetModalBackdropPointerState);
 loadSitesWithCrawlInfo().catch(() => {
   updateStatusBar('页面加载异常', null, '请检查服务器连接后刷新');
 });
+loadCrawlLogs();
 initIntervalSelect().catch(() => {});
 loadSystemStatus().catch(() => {
   updateStatusBar('状态读取失败', null, '请检查服务器连接后刷新');

@@ -32,6 +32,7 @@ app = Flask(__name__)
 
 DATA_FILE = Path(__file__).parent / 'sites.json'
 CONFIG_FILE = Path(__file__).parent / 'config.json'
+CRAWL_LOG_FILE = Path(__file__).parent / 'crawl_logs.jsonl'
 DEFAULT_BOOKMARK_HTML = r'D:\科情\科情\科情.html'
 
 # 抓取状态
@@ -273,6 +274,138 @@ def _write_json(filepath: Path, payload: dict):
         json.dump(payload, f, ensure_ascii=False, indent=2)
 
 
+def _now_display() -> str:
+    return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+
+def _append_crawl_log(entry: dict):
+    entry = dict(entry)
+    entry.setdefault('id', uuid.uuid4().hex)
+    entry.setdefault('finished_at', _now_display())
+    CRAWL_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(CRAWL_LOG_FILE, 'a', encoding='utf-8') as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+
+
+def _read_crawl_logs() -> list[dict]:
+    if not CRAWL_LOG_FILE.exists():
+        return []
+    logs = []
+    with open(CRAWL_LOG_FILE, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                logs.append(json.loads(line))
+            except (TypeError, ValueError):
+                continue
+    return logs
+
+
+def _site_result_log(site: dict, result: dict | None, error: str = '') -> dict:
+    items = (result or {}).get('items') or []
+    article_count = int((result or {}).get('count') or len(items) or 0)
+    raw_article_count = int((result or {}).get('raw_article_count') or article_count)
+    history_filtered_count = int((result or {}).get('history_filtered_count') or 0)
+    new_article_count = int((result or {}).get('new_article_count') or article_count)
+    content_count = sum(1 for item in items if item.get('content'))
+    title_only_count = sum(
+        1 for item in items
+        if item.get('title') and not item.get('content')
+    )
+    translation_failed_count = sum(
+        1 for item in items
+        if (item.get('translation') or {}).get('status') == 'failed'
+    )
+    translation_partial_count = sum(
+        1 for item in items
+        if (item.get('translation') or {}).get('status') == 'partial'
+    )
+    translation_errors = [
+        (item.get('translation') or {}).get('error')
+        for item in items
+        if (item.get('translation') or {}).get('error')
+    ]
+    timed_out = bool((result or {}).get('timed_out'))
+    result_error = error or (result or {}).get('error') or ''
+    mode = site.get('crawl_mode', 'auto')
+
+    status = 'success'
+    reason = '成功'
+    if result_error:
+        status = 'failed'
+        reason = result_error
+    elif timed_out:
+        status = 'failed'
+        reason = '站点抓取超时，已保留部分结果'
+    elif (result or {}).get('no_new_items'):
+        status = 'skipped'
+        reason = '本次抓到的文章均已存在历史记录'
+    elif article_count <= 0:
+        status = 'failed'
+        if site.get('status') == 'timeout':
+            reason = '连接超时'
+        elif mode == 'stealth':
+            reason = '未抓取到有效文章，可能被反扒拦截或页面结构不匹配'
+        else:
+            reason = '未抓取到有效文章，可能连接失败、被反扒或页面结构不匹配'
+    elif content_count <= 0 and title_only_count > 0:
+        status = 'failed'
+        reason = '只抓取到标题，未抓到原文'
+    elif content_count < article_count:
+        status = 'partial'
+        reason = '部分文章未抓到原文'
+    elif translation_failed_count:
+        status = 'partial'
+        reason = '文章已抓取，翻译失败'
+    elif translation_partial_count:
+        status = 'partial'
+        reason = '文章已抓取，部分翻译失败'
+
+    return {
+        'site_id': site.get('id', ''),
+        'site_name': site.get('name', ''),
+        'site_url': site.get('url', ''),
+        'status': status,
+        'reason': reason,
+        'method': (result or {}).get('method', mode),
+        'article_count': article_count,
+        'raw_article_count': raw_article_count,
+        'history_filtered_count': history_filtered_count,
+        'new_article_count': new_article_count,
+        'content_count': content_count,
+        'title_only_count': title_only_count,
+        'translation_failed_count': translation_failed_count,
+        'translation_partial_count': translation_partial_count,
+        'translation_error': translation_errors[0] if translation_errors else '',
+        'timed_out': timed_out,
+        'error': result_error,
+    }
+
+
+def _crawl_run_log(source: str, started_at: str, site_logs: list[dict], error: str = '') -> dict:
+    total_articles = sum(item.get('article_count', 0) for item in site_logs)
+    content_count = sum(item.get('content_count', 0) for item in site_logs)
+    return {
+        'source': source,
+        'started_at': started_at,
+        'finished_at': _now_display(),
+        'total_sites': len(site_logs),
+        'total_articles': total_articles,
+        'content_count': content_count,
+        'raw_articles': sum(item.get('raw_article_count', 0) for item in site_logs),
+        'history_filtered_count': sum(item.get('history_filtered_count', 0) for item in site_logs),
+        'new_article_count': sum(item.get('new_article_count', 0) for item in site_logs),
+        'success_count': sum(1 for item in site_logs if item.get('status') == 'success'),
+        'partial_count': sum(1 for item in site_logs if item.get('status') == 'partial'),
+        'skipped_count': sum(1 for item in site_logs if item.get('status') == 'skipped'),
+        'failed_count': sum(1 for item in site_logs if item.get('status') == 'failed'),
+        'error': error,
+        'sites': site_logs,
+    }
+
+
 def _is_translation_enabled(cfg: dict | None = None) -> bool:
     if cfg is None and app.config.get('TESTING'):
         return False
@@ -460,6 +593,10 @@ def run_crawl_all():
 
 def _run_crawl_all():
     global crawl_state
+    started_at = _now_display()
+    site_logs = []
+    seen_site_ids = set()
+    run_error = ''
     sites = load_sites()
     cfg = load_config()
     global_max = cfg.get('max_items', 200)
@@ -482,27 +619,39 @@ def _run_crawl_all():
             'error': None,
         }
     if not sites:
+        _append_crawl_log(_crawl_run_log('全部抓取', started_at, []))
         with crawl_lock:
             crawl_state['running'] = False
         return
 
     def _progress(site: dict, _result: dict | None):
+        seen_site_ids.add(site.get('id'))
+        site_logs.append(_site_result_log(site, _result))
         with crawl_lock:
             crawl_state['done'] += 1
             crawl_state['current'] = site.get('name', '')
 
-    site_timeout = cfg.get('site_timeout_seconds', 300)
-    for site in sites:
-        site['_site_timeout_seconds'] = site_timeout
-    _crawl_all(
-        sites,
-        get_data_dir(),
-        dedupe_cb=_dedupe_items_with_mirror,
-        save_hook=_save_batch_snapshot_to_mirror,
-        transform_cb=lambda result: _translate_result(result, cfg),
-        should_stop=crawl_stop_event.is_set,
-        progress_cb=_progress,
-    )
+    try:
+        site_timeout = cfg.get('site_timeout_seconds', 300)
+        for site in sites:
+            site['_site_timeout_seconds'] = site_timeout
+        _crawl_all(
+            sites,
+            get_data_dir(),
+            dedupe_cb=_dedupe_items_with_mirror,
+            save_hook=_save_batch_snapshot_to_mirror,
+            transform_cb=lambda result: _translate_result(result, cfg),
+            should_stop=crawl_stop_event.is_set,
+            progress_cb=_progress,
+        )
+    except Exception as exc:
+        run_error = str(exc)
+        raise
+    finally:
+        for site in sites:
+            if site.get('id') not in seen_site_ids:
+                site_logs.append(_site_result_log(site, None, '抓取中断，未完成该网站'))
+        _append_crawl_log(_crawl_run_log('全部抓取', started_at, site_logs, run_error))
 
 
 scheduler = BackgroundScheduler()
@@ -1002,6 +1151,11 @@ def crawl_status():
         return jsonify(dict(crawl_state))
 
 
+@app.route('/api/crawl/logs', methods=['GET'])
+def crawl_logs():
+    return jsonify({'logs': list(reversed(_read_crawl_logs()))})
+
+
 @app.route('/api/crawl/<site_id>', methods=['POST'])
 def crawl_one_route(site_id):
     sites = load_sites()
@@ -1013,16 +1167,31 @@ def crawl_one_route(site_id):
     cfg = load_config()
     site.setdefault('max_items', cfg.get('max_items', 200))
     site.setdefault('max_article_age_days', cfg.get('max_article_age_days', 0))
+    site['_site_timeout_seconds'] = cfg.get('site_timeout_seconds', 300)
     site['_skip_urls'] = list(_known_urls_for_site(site['id']))
+    started_at = _now_display()
+    error = ''
     try:
         result = _crawl_site(site)
     except Exception as exc:
+        error = str(exc)
+        _append_crawl_log(_crawl_run_log(
+            '单站抓取',
+            started_at,
+            [_site_result_log(site, None, error)],
+            error,
+        ))
         return jsonify({'error': f'抓取失败：{exc}'}), 502
     if result and result.get('items'):
         result['items'] = _dedupe_items_with_mirror(site['id'], result['items'])
         result['count'] = len(result['items'])
     if result and result.get('items'):
         _save_single_result(site['id'], result)
+    _append_crawl_log(_crawl_run_log(
+        '单站抓取',
+        started_at,
+        [_site_result_log(site, result)],
+    ))
     return jsonify(result if result else {'count': 0})
 
 

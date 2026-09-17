@@ -24,6 +24,7 @@ AGENTS.md
 config.json
 sites.json
 state.json
+crawl_logs.jsonl
 data/
 raw/
 mirror-data/

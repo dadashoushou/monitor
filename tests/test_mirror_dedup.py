@@ -78,6 +78,7 @@ def test_crawl_one_route_dedupes_against_mirror_and_updates_title_index(tmp_path
 
     monkeypatch.setattr(app_module, "get_data_dir", lambda: data_dir)
     monkeypatch.setattr(app_module, "get_mirror_data_dir", lambda: mirror_dir)
+    monkeypatch.setattr(app_module, "CRAWL_LOG_FILE", tmp_path / "crawl_logs.jsonl")
     monkeypatch.setattr(
         app_module,
         "load_sites",
