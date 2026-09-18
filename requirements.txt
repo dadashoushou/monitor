@@ -13,3 +13,5 @@ pytest
 # Helper script dependency for analyze_sites.py
 beautifulsoup4==4.12.3
 translators
+# Python 3.12+ compatibility shim used by undetected-chromedriver (distutils)
+setuptools>=68

@@ -25,6 +25,7 @@ config.json
 sites.json
 state.json
 crawl_logs.jsonl
+*.log
 .scheduler.lock
 data/
 raw/

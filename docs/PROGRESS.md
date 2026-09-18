@@ -56,6 +56,11 @@
 - [x] 敏感文件（config.json / sites.json）从 git 追踪移除
 - [x] 新增 config.example.json 配置模板
 - [x] 公开仓库说明补充完成（README + `docs/PUBLIC_REPO_GUIDE.md`）
+- [x] USNI News 反爬测试：确认普通请求、Playwright 无头模式和 StealthyFetcher 会触发 Cloudflare Managed Challenge
+- [x] USNI News 浏览器测试：确认 Selenium + `undetected-chromedriver` 无头模式失败，有界面模式在当前出口两次通过并获取真实页面
+- [x] Python 3.12 兼容性修复：安装 `setuptools`，并加入 `requirements.txt`
+- [x] USNI News 采集策略确定：优先 RSS/聚合 RSS，浏览器会话仅低频、合规地用于必要页面核验
+- [x] Git 上传前回归测试：90 个测试全部通过
 
 ---
 
@@ -94,11 +99,19 @@
 
 ---
 
+## USNI News 反爬专项结论
+
+- 站点前置 Cloudflare 托管挑战；首页、Latest、RSS 和 `robots.txt` 的普通请求均可能返回 `403` 与 `cf-mitigated: challenge`。
+- Playwright + 系统 Chrome 无头模式：失败，页面停留在 `Just a moment...`。
+- Scrapling `StealthyFetcher`：识别到 Managed Turnstile，但多次尝试后仍未通过。
+- Selenium + `undetected-chromedriver`：无头模式失败；有界面模式在当前机器出口两次成功加载 `Latest - USNI News`。
+- 该结果不代表稳定绕过，生产环境应使用低频持久化浏览器会话，并保留 RSS/聚合 RSS 回退；遇到挑战或 `403` 时暂停重试。
+
 ## 当前状态
 
-**最后更新**: 2026-04-20
-**已完成**: P0 ~ P3（基础抓取 + AI 分析 + 工程优化 + 仓库发布整理）
-**下一步**: 推送公开仓库版本，随后进入 P4（抓取质量提升）
+**最后更新**: 2026-09-18
+**已完成**: P0 ~ P3（基础抓取 + AI 分析 + 工程优化 + USNI News 反爬评估）
+**下一步**: 进入 P4（抓取质量提升）
 
 ## 如何恢复
 
