@@ -25,6 +25,14 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
+如果任一站点使用 `js` 或 `stealth` 模式，还需要安装对应的 Chromium 运行时：
+
+```powershell
+patchright install chromium
+```
+
+Python 包升级后如果出现 `Executable doesn't exist`，请重新执行该命令，使浏览器版本与当前 Patchright 版本匹配。
+
 ## 3. 配置文件
 
 将 `config.example.json` 复制为 `config.json`：
