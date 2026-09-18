@@ -238,7 +238,7 @@ def _extract_page_content_with_match(
             continue
         for el in elements or []:
             try:
-                text = _clean_text(el.text or '')
+                text = _element_text(el)
             except Exception:
                 continue
             if len(text) < 80:
@@ -256,7 +256,7 @@ def _extract_page_content_with_match(
     try:
         body = page.css('body')
         if body:
-            text = _clean_text(body[0].text or '')
+            text = _element_text(body[0])
             return text, False
     except Exception:
         pass

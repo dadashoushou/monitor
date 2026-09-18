@@ -437,6 +437,22 @@ def test_extract_page_content_prefers_article_text():
     assert _extract_page_content(page).startswith('这是第一段正文。')
 
 
+def test_extract_page_content_falls_back_to_nested_text_api():
+    """Scrapling 节点的 text 为空时，应使用 get_all_text 提取正文。"""
+    from crawler import _extract_page_content
+
+    class NestedTextElement:
+        text = ''
+
+        def get_all_text(self):
+            return '这是通过嵌套文本接口返回的正文。' * 20
+
+    page = MagicMock()
+    page.css.side_effect = lambda selector: [NestedTextElement()] if selector == 'article' else []
+
+    assert _extract_page_content(page).startswith('这是通过嵌套文本接口返回的正文。')
+
+
 def test_extract_page_content_supports_raw_html_content_selector():
     """站点专属正文容器应从原始 HTML 中提取，即使 Scrapling text 为空。"""
     from crawler import _extract_page_content

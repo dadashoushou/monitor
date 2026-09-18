@@ -141,7 +141,7 @@
     "crawl_paused": false,
     "selectors": null,
     "content_selector": "main#main .post-body",
-    "article_crawl_mode": "auto",
+    "article_crawl_mode": "html",
     "content_selector_generated_by": null,
     "content_selector_generated_at": null
   },
@@ -233,7 +233,7 @@
       "min_title_len": 12,
       "max_title_len": 160
     },
-    "content_selector": "main#tm-main .uk-width-3-4@m",
+    "content_selector": "main#tm-main [class~=\"uk-width-3-4@m\"]",
     "article_crawl_mode": "auto",
     "content_selector_generated_by": null,
     "content_selector_generated_at": null
@@ -251,7 +251,7 @@
     "crawl_paused": false,
     "selectors": null,
     "content_selector": ".td-post-content",
-    "article_crawl_mode": "auto",
+    "article_crawl_mode": "html",
     "content_selector_generated_by": null,
     "content_selector_generated_at": null
   },
@@ -439,7 +439,7 @@
   {
     "seq": 23,
     "id": "7e726dc5-a25a-447f-acef-9e06d42e1abb",
-    "name": "Shephard Media News",
+    "name": "(需登录)Shephard Media News",
     "url": "https://www.shephardmedia.com/news/",
     "note": "RSS preferred for scheduled crawling.",
     "rss_url": "https://www.shephardmedia.com/news/feed/",
@@ -507,7 +507,7 @@
     "article_crawl_mode": "auto",
     "crawl_paused": false,
     "selectors": null,
-    "content_selector": null,
+    "content_selector": "main.container .items",
     "content_selector_generated_by": null,
     "content_selector_generated_at": null
   }
