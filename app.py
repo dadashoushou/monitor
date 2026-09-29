@@ -25,6 +25,7 @@ from crawler import (
 )
 from ai_analyzer import analyze_page as _analyze_page
 from mirror_store import filter_new_items, ingest_snapshot, load_known_urls, update_site_index
+from flaresolverr_manager import manager as flaresolverr_manager
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -87,6 +88,12 @@ def load_config() -> dict:
             'scheduler_on': True,
             'bookmark_html_path': DEFAULT_BOOKMARK_HTML,
             'site_timeout_seconds': 300,
+            'flaresolverr': {
+                'enabled': True,
+                'url': 'http://127.0.0.1:8191/v1',
+                'executable_path': '',
+                'startup_timeout_seconds': 30,
+            },
         }
     with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
         cfg = json.load(f)
@@ -94,6 +101,11 @@ def load_config() -> dict:
     cfg.setdefault('scheduler_on', True)
     cfg.setdefault('bookmark_html_path', DEFAULT_BOOKMARK_HTML)
     cfg.setdefault('site_timeout_seconds', 300)
+    cfg.setdefault('flaresolverr', {})
+    cfg['flaresolverr'].setdefault('enabled', True)
+    cfg['flaresolverr'].setdefault('url', 'http://127.0.0.1:8191/v1')
+    cfg['flaresolverr'].setdefault('executable_path', '')
+    cfg['flaresolverr'].setdefault('startup_timeout_seconds', 30)
     return cfg
 
 
@@ -1545,6 +1557,7 @@ def system_status():
         'last_run': last_run,
         'crawl_running': crawl_running,
         'crawl_stopped': crawl_stopped,
+        'flaresolverr': flaresolverr_manager.status(),
     })
 
 
@@ -1573,7 +1586,10 @@ def set_crawl_service():
 
 
 if __name__ == '__main__':
-    import os
-    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not app.debug:
-        _start_scheduler()
-    app.run(debug=True, port=5001)
+    # 禁用 Flask/Werkzeug 自动重载：自动重载会创建父子两个 Python 进程，
+    # 两者都会尝试获取定时抓取锁，导致无害但反复出现的“重复调度器”警告，
+    # 也会让配置请求落到不持有调度器的进程上。
+    cfg = load_config()
+    flaresolverr_manager.start(cfg)
+    _start_scheduler()
+    app.run(debug=True, port=5001, use_reloader=False)

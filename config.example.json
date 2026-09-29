@@ -5,6 +5,12 @@
   "max_items": 200,
   "max_article_age_days": 0,
   "site_timeout_seconds": 300,
+  "flaresolverr": {
+    "enabled": true,
+    "url": "http://127.0.0.1:8191/v1",
+    "executable_path": "",
+    "startup_timeout_seconds": 30
+  },
   "ai": {
     "api_url": "https://api.openai.com/v1",
     "api_key": "<your-api-key>",

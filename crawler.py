@@ -13,6 +13,7 @@ import feedparser
 import requests
 from bs4 import BeautifulSoup
 from scrapling import Fetcher, DynamicFetcher, StealthyFetcher
+from flaresolverr_manager import manager as flaresolverr_manager
 
 DATE_PATTERN = re.compile(r'\d{4}[-/_]\d{2}')
 ARTICLE_PATTERN = re.compile(r'/article/')
@@ -78,6 +79,26 @@ def _page_status(page) -> int | None:
         return int(status) if status is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _looks_like_challenge(page, status: int | None = None) -> bool:
+    """识别 Cloudflare/挑战页，避免正常空页面误触发浏览器兜底。"""
+    if status in (403, 429, 503):
+        return True
+    body = getattr(page, 'body', '') or ''
+    if isinstance(body, bytes):
+        body = body.decode('utf-8', errors='ignore')
+    sample = str(body).lower()[:300000]
+    markers = (
+        'just a moment', 'cf-chl-', 'challenge-platform',
+        'checking your browser', 'enable javascript and cookies',
+        'attention required! | cloudflare',
+    )
+    return any(marker in sample for marker in markers)
+
+
+def _solve_with_flaresolverr(url: str):
+    return flaresolverr_manager.solve(url)
 
 
 def _record_article_error(
@@ -294,6 +315,10 @@ def _crawl_article_content(
         return '', ''
 
     status = _page_status(page)
+    if _looks_like_challenge(page, status):
+        solved = _solve_with_flaresolverr(url)
+        if solved is not None:
+            page, status = solved, _page_status(solved)
     if status is not None and status >= 400:
         _record_article_error(
             diagnostics,
@@ -334,6 +359,11 @@ def _crawl_article_content_with_match(
             page = Fetcher.get(url, timeout=15)
     except Exception:
         return '', False
+
+    if _looks_like_challenge(page, _page_status(page)):
+        solved = _solve_with_flaresolverr(url)
+        if solved is not None:
+            page = solved
 
     content, selector_hit = _extract_page_content_with_match(
         page,
@@ -543,11 +573,35 @@ def _parsed_time_to_iso(t) -> str:
         return None
 
 
+def _items_from_feed(feed, site: dict, response=None) -> list[dict]:
+    items = []
+    seen_urls: set[str] = set()
+    try:
+        max_items = max(int(site.get('max_items', 200)), 1)
+    except (TypeError, ValueError):
+        max_items = 200
+    for entry in feed.entries[:max_items]:
+        url = entry.get('link', '')
+        if not url or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        published = _parsed_time_to_iso(
+            getattr(entry, 'published_parsed', None) or getattr(entry, 'updated_parsed', None)
+        )
+        items.append({'title': entry.get('title', ''), 'url': url,
+                      'published': published,
+                      'summary': entry.get('summary', '') or entry.get('description', ''),
+                      'content': '',
+                      'crawled_at': datetime.now().isoformat(timespec='seconds')})
+    return items
+
+
 def crawl_rss(site: dict) -> list[dict]:
     """用带超时的 HTTP 请求获取 RSS，再交给 feedparser 解析。"""
     rss_url = site.get('rss_url')
     if not rss_url:
         return []
+    feed = None
     try:
         response = requests.get(
             rss_url,
@@ -559,6 +613,17 @@ def crawl_rss(site: dict) -> list[dict]:
     except (requests.RequestException, ValueError, TypeError) as exc:
         response = getattr(exc, 'response', None)
         status = getattr(response, 'status_code', None)
+        if status in (403, 429, 503):
+            solved = _solve_with_flaresolverr(rss_url)
+            body = getattr(solved, 'body', '') if solved is not None else ''
+            if isinstance(body, bytes):
+                body = body.decode('utf-8', errors='ignore')
+            if body:
+                feed = feedparser.parse(body)
+                if feed.entries:
+                    response = solved
+        if feed is not None and feed.entries:
+            return _items_from_feed(feed, site, response)
         _record_crawl_error(
             site,
             'rss_fetch',
@@ -615,15 +680,23 @@ def crawl_html(site: dict) -> list[dict]:
     try:
         page = Fetcher.get(site['url'], timeout=10)
     except Exception as exc:
-        _record_crawl_error(
-            site,
-            'list_fetch',
-            f'HTML 列表请求失败：{type(exc).__name__}: {exc}',
-            url=site.get('url', ''),
-        )
-        return []
+        page = _solve_with_flaresolverr(site['url'])
+        if page is not None:
+            exc = None
+        else:
+            _record_crawl_error(
+                site,
+                'list_fetch',
+                f'HTML 列表请求失败：{type(exc).__name__}: {exc}',
+                url=site.get('url', ''),
+            )
+            return []
     max_items = site.get('max_items', 200)
     status = _page_status(page)
+    if _looks_like_challenge(page, status):
+        solved = _solve_with_flaresolverr(site['url'])
+        if solved is not None:
+            page, status = solved, _page_status(solved)
     if status is not None and status >= 400:
         _record_crawl_error(
             site,
@@ -653,15 +726,16 @@ def crawl_js(site: dict) -> list[dict]:
             headless=True, network_idle=True, disable_resources=True, timeout=30000
         )
     except Exception as exc:
-        _record_crawl_error(
-            site,
-            'list_fetch',
-            f'JS 列表请求失败：{type(exc).__name__}: {exc}',
-            url=site.get('url', ''),
-        )
-        return []
+        page = _solve_with_flaresolverr(site['url'])
+        if page is None:
+            _record_crawl_error(site, 'list_fetch', f'JS 列表请求失败：{type(exc).__name__}: {exc}', url=site.get('url', ''))
+            return []
     max_items = site.get('max_items', 200)
     status = _page_status(page)
+    if _looks_like_challenge(page, status):
+        solved = _solve_with_flaresolverr(site['url'])
+        if solved is not None:
+            page, status = solved, _page_status(solved)
     if status is not None and status >= 400:
         _record_crawl_error(
             site,
@@ -691,15 +765,16 @@ def crawl_stealth(site: dict) -> list[dict]:
             headless=True, network_idle=True, disable_resources=True, timeout=30000
         )
     except Exception as exc:
-        _record_crawl_error(
-            site,
-            'list_fetch',
-            f'Stealth 列表请求失败：{type(exc).__name__}: {exc}',
-            url=site.get('url', ''),
-        )
-        return []
+        page = _solve_with_flaresolverr(site['url'])
+        if page is None:
+            _record_crawl_error(site, 'list_fetch', f'Stealth 列表请求失败：{type(exc).__name__}: {exc}', url=site.get('url', ''))
+            return []
     max_items = site.get('max_items', 200)
     status = _page_status(page)
+    if _looks_like_challenge(page, status):
+        solved = _solve_with_flaresolverr(site['url'])
+        if solved is not None:
+            page, status = solved, _page_status(solved)
     if status is not None and status >= 400:
         _record_crawl_error(
             site,

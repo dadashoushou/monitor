@@ -32,6 +32,10 @@ raw/
 mirror-data/
 history_mirror/
 
+# Local runtime bundles and generated QR exports
+flaresolverr/
+Lenovo-pc6/qr/generate/
+
 frontend/config.json
 frontend/state.json
 frontend/.tmp-tests/
